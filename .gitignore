@@ -1,0 +1,4 @@
+*.pyc
+docs/
+output/
+test/
