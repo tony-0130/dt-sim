@@ -37,21 +37,6 @@ def setup_dtc_parser(subparser):
     
     return dtc_parser
 
-def setup_overlay_parser(subparser):
-    """設置 dt-sim overlay 子命令"""
-    overlay_parser = subparser.add_parser(
-        'overlay',
-        help='模擬 dtc overlay 編譯',
-        description='將 overlay .dts 文件編譯成 .dtbo.txt 文件'
-    )
-    
-    overlay_parser.add_argument('input', help='輸入的 overlay .dts 文件')
-    overlay_parser.add_argument('-o', '--output', required=True, help='輸出的 .dtbo.txt 文件')
-    overlay_parser.add_argument('-v', '--verbose', action='store_true', help='顯示詳細過程')
-    overlay_parser.add_argument('--show-fragments', action='store_true', help='顯示 fragment 結構')
-    overlay_parser.add_argument('--validate-targets', action='store_true', help='驗證 fragment targets')
-    
-    return overlay_parser
 
 def setup_fdtoverlay_parser(subparser):
     """設置 dt-sim fdtoverlay 子命令"""
@@ -82,9 +67,6 @@ def main():
   # 編譯 DTS 到文本 DTB
   python dt-sim.py dtc base.dts -o base.dtb.txt --verbose
   
-  # 編譯 overlay
-  python dt-sim.py overlay my_overlay.dts -o my_overlay.dtbo.txt --show-fragments
-  
   # 合併 base 和 overlay
   python dt-sim.py fdtoverlay base.dtb.txt overlay.dtbo.txt -o final.dtb.txt --show-changes
         '''
@@ -102,7 +84,6 @@ def main():
     
     # 設置子命令
     dtc_parser = setup_dtc_parser(subparsers)
-    overlay_parser = setup_overlay_parser(subparsers)  
     fdto_parser = setup_fdtoverlay_parser(subparsers)
     
     # 解析參數
@@ -129,8 +110,8 @@ def main():
             try:
                 from commands.fdtoverlay_command import execute  
                 return execute(args)
-            except ImportError:
-                print("❌ 無法導入 fdtoverlay_command: {e}")
+            except ImportError as e:
+                print(f"❌ 無法導入 fdtoverlay_command: {e}")
                 print("請確保 commands/fdtoverlay_command.py 文件存在")
                 return 1
         else:
