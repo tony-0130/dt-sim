@@ -1,4 +1,5 @@
 *.pyc
 docs/
+input/
 output/
-test/
+

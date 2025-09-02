@@ -40,8 +40,8 @@ class ErrorReporter:
     @staticmethod
     def compilation_failed(input_file: str, error_message: str):
         """報告編譯失敗錯誤"""
-        print(f"❌ 編譯失敗: {input_file}")
-        print(f"   錯誤: {error_message}")
+        print(f"[ERROR] Compilation failed: {input_file}")
+        print(f"   Error: {error_message}")
         
         # 嘗試從錯誤信息中提取行號
         if "line" in error_message:

@@ -67,6 +67,7 @@ class ASTNode:
     line: int = 0
     column: int = 0
     source_file: str = ""
+    is_reference: bool = False  # True if this is a &label reference
 
 # ===== 詞法分析器 =====
 
@@ -400,7 +401,50 @@ class DTSParser:
             root_node = self._parse_node()
             # 將保存的頂層標籤添加到根節點
             root_node.labels.extend(saved_labels)
-            return root_node
+            
+            # 檢查是否還有更多頂層內容（如 &references）
+            self._skip_comments()
+            if not self._match(TokenType.EOF):
+                if self.verbose:
+                    current = self._current_token()
+                    print(f"  Found additional top-level content after root: {current.type.name} '{current.value}'")
+                
+                # 創建虛擬根節點來包含所有內容
+                virtual_root = ASTNode(
+                    name="/",
+                    labels=root_node.labels,
+                    properties=root_node.properties,
+                    children=root_node.children,
+                    line=root_node.line,
+                    column=root_node.column,
+                    source_file=root_node.source_file
+                )
+                
+                # 解析剩餘的頂層內容
+                while not self._match(TokenType.EOF):
+                    self._skip_comments()
+                    if self._match(TokenType.EOF):
+                        break
+                    
+                    if self.verbose:
+                        current = self._current_token()
+                        print(f"    Parsing additional content: {current.type.name} '{current.value}'")
+                        
+                    try:
+                        child_node = self._parse_node()
+                        virtual_root.children[child_node.name] = child_node
+                        if self.verbose:
+                            ref_info = " (reference)" if child_node.is_reference else ""
+                            print(f"    Added top-level node: {child_node.name}{ref_info}")
+                    except Exception as e:
+                        if self.verbose:
+                            print(f"  Warning: Failed to parse additional content: {e}")
+                        if not self._match(TokenType.EOF):
+                            self._advance()
+                            
+                return virtual_root
+            else:
+                return root_node
             
         elif self._match(TokenType.IDENTIFIER):
             # ✅ 修復：創建虛擬根節點來包含頂層內容
@@ -422,10 +466,17 @@ class DTSParser:
                 self._skip_comments()
                 if self._match(TokenType.EOF):
                     break
+                
+                if self.verbose:
+                    current = self._current_token()
+                    print(f"    Parsing top-level content: {current.type.name} '{current.value}'")
                     
                 try:
                     child_node = self._parse_node()
                     virtual_root.children[child_node.name] = child_node
+                    if self.verbose:
+                        ref_info = " (reference)" if child_node.is_reference else ""
+                        print(f"    Added top-level node: {child_node.name}{ref_info}")
                 except Exception as e:
                     if self.verbose:
                         print(f"  Warning: Failed to parse top-level content: {e}")
@@ -471,6 +522,7 @@ Suggestions:
         
         labels = []
         
+        
         # 解析標籤
         while True:
             if self._match(TokenType.IDENTIFIER):
@@ -487,9 +539,19 @@ Suggestions:
                 
         # 解析節點名稱
         name_token = self._current_token()
+        is_reference = False
+        
         if self._match(TokenType.SLASH):
             self._advance()
             name = "/"  # 根節點
+        elif self._match(TokenType.AMPERSAND):
+            # 處理節點引用 &label
+            self._advance()  # consume &
+            if self._match(TokenType.IDENTIFIER):
+                name = self._consume(TokenType.IDENTIFIER).value
+                is_reference = True
+            else:
+                raise SyntaxError(f"Expected label name after & at line {name_token.line}")
         elif self._match(TokenType.IDENTIFIER):
             name = self._consume(TokenType.IDENTIFIER).value
         else:
@@ -502,7 +564,8 @@ Suggestions:
             children={},
             line=name_token.line,
             column=name_token.column,
-            source_file=self.source_file
+            source_file=self.source_file,
+            is_reference=is_reference
         )
         
         self._consume(TokenType.LBRACE)
@@ -557,6 +620,8 @@ Suggestions:
                 # 基於找到的 token 來決定這是節點還是屬性
                 if found_brace:
                     # 有大括號 = 這是子節點
+                    # 重置位置到開始處，讓 _parse_node 處理標籤
+                    self.pos = saved_pos
                     child = self._parse_node()
                     node.children[child.name] = child
                 elif found_equals or found_semicolon:
@@ -617,13 +682,41 @@ Suggestions:
         self._skip_comments()
         
         if self._match(TokenType.STRING):
-            # 字符串值
+            # 字符串值 - 可能是單一字符串或逗號分隔的字符串數組
+            strings = []
+            raw_parts = []
+            
+            # 第一個字符串
             token = self._consume(TokenType.STRING)
-            return PropertyValue(
-                type="string",
-                value=token.value,
-                raw=f'"{token.value}"'
-            )
+            strings.append(token.value)
+            raw_parts.append(f'"{token.value}"')
+            
+            # 檢查是否有更多逗號分隔的字符串
+            while self._match(TokenType.COMMA):
+                self._advance()  # consume comma
+                raw_parts.append(", ")
+                self._skip_comments()
+                
+                if self._match(TokenType.STRING):
+                    token = self._consume(TokenType.STRING)
+                    strings.append(token.value)
+                    raw_parts.append(f'"{token.value}"')
+                else:
+                    raise SyntaxError(f"Expected string after comma at line {self._current_token().line}")
+            
+            # 如果只有一個字符串，返回單一字符串；否則返回字符串數組
+            if len(strings) == 1:
+                return PropertyValue(
+                    type="string",
+                    value=strings[0],
+                    raw=raw_parts[0]
+                )
+            else:
+                return PropertyValue(
+                    type="string_array",
+                    value=strings,
+                    raw="".join(raw_parts)
+                )
             
         elif self._match(TokenType.LANGLE):
             # 數組值 <...>

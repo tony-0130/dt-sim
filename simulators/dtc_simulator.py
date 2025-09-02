@@ -167,6 +167,7 @@ class Preprocessor:
     def __init__(self):
         self.included_files: Set[str] = set()
         self.include_paths: List[str] = []
+        self.file_cache: Dict[str, str] = {}  # Cache for file contents
         
     def add_include_path(self, path: str):
         """添加 include 搜索路徑"""
@@ -186,14 +187,21 @@ class Preprocessor:
         
         print(f"    Processing file: {os.path.basename(file_path)}")
         
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-        except FileNotFoundError:
-            raise FileNotFoundError(f"Include file not found: {file_path}")
+        # Check cache first
+        if abs_path in self.file_cache:
+            content = self.file_cache[abs_path]
+        else:
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                self.file_cache[abs_path] = content
+            except FileNotFoundError:
+                raise FileNotFoundError(f"Include file not found: {file_path}")
             
-        # 處理 #include 指令，添加源文件註解
+        # 處理 #include 指令，添加詳細的源文件註解
         result_lines = []
+        current_file = os.path.basename(file_path)
+        
         for line_num, line in enumerate(content.split('\n'), 1):
             stripped = line.strip()
             
@@ -213,8 +221,13 @@ class Preprocessor:
                     else:
                         raise FileNotFoundError(f"Cannot resolve include: {include_file}")
                 else:
+                    # 添加當前文件的行註解
+                    result_lines.append(f"/* === Line from {current_file}:{line_num} === */")
                     result_lines.append(line)
             else:
+                # 為非空行添加源文件信息
+                if stripped:
+                    result_lines.append(f"/* === Line from {current_file}:{line_num} === */")
                 result_lines.append(line)
                 
         # 合併內容並處理多個根節點
@@ -262,6 +275,7 @@ class Preprocessor:
         result_lines = []
         dts_version = ""
         root_content_parts = []
+        non_root_content = []  # 收集 &references 等非根節點內容
         current_source_file = "unknown"
         
         i = 0
@@ -311,9 +325,11 @@ class Preprocessor:
                 
                 root_content_parts.extend(root_content)
             else:
+                # 這是非根節點內容（如 &references），保留它
+                non_root_content.append(lines[i])  # 保留原行（不是 stripped）
                 i += 1
         
-        # 重新組合成單一根節點
+        # 重新組合：先是根節點，然後是非根節點內容
         if dts_version:
             result_lines.append(dts_version)
             result_lines.append("")
@@ -322,28 +338,65 @@ class Preprocessor:
         result_lines.extend(root_content_parts)
         result_lines.append("};")
         
+        # 添加非根節點內容（如 &references）
+        if non_root_content:
+            result_lines.append("")  # 空行分隔
+            result_lines.extend(non_root_content)
+        
         return '\n'.join(result_lines)
     
     def _build_source_mapping(self, content: str):
-        """建構源文件映射表"""
+        """建構源文件映射表 - 優化版本"""
+        if not content:
+            self.source_mapping = {}
+            return
+            
         lines = content.split('\n')
         current_source_file = None
-        line_number = 0
         
         # 存儲在預處理器中，供外部訪問
         self.source_mapping = {}
         
+        # 優化：使用批量處理
         for i, line in enumerate(lines):
             line_number = i + 1
             stripped = line.strip()
             
-            # 檢測源文件註解
+            # 檢測源文件註解 - 支援多種格式
             if stripped.startswith('/* === Content from '):
-                current_source_file = stripped.split('Content from ')[1].split(' ===')[0]
+                try:
+                    current_source_file = stripped[20:stripped.index(' ===')]
+                except ValueError:
+                    continue
+                continue
+            elif stripped.startswith('/* Content from '):
+                try:
+                    current_source_file = stripped[16:stripped.rindex(' */')]
+                except ValueError:
+                    continue
+                continue
+            elif stripped.startswith('/* === Line from '):
+                try:
+                    # 解析格式: /* === Line from filename:line === */
+                    # Find the content between "Line from " and " ==="
+                    start_idx = stripped.find('Line from ') + 10
+                    end_idx = stripped.rfind(' ===')
+                    line_info = stripped[start_idx:end_idx]
+                    
+                    if ':' in line_info:
+                        file_part, line_part = line_info.rsplit(':', 1)
+                        current_source_file = file_part
+                        # 存儲帶有原始行號的映射
+                        self.source_mapping[line_number] = f"{file_part}:{line_part}"
+                        continue
+                    else:
+                        current_source_file = line_info
+                except (ValueError, IndexError):
+                    continue
                 continue
                 
-            # 記錄節點和屬性的源文件
-            if current_source_file and ('{' in stripped or '=' in stripped):
+            # 記錄節點和屬性的源文件 - 優化條件檢查
+            if current_source_file and stripped and ('{' in stripped or '=' in stripped):
                 self.source_mapping[line_number] = current_source_file
 
 
@@ -431,13 +484,16 @@ class DTCSimulator:
         """從 AST 建構設備樹"""
         device_tree = DeviceTree(verbose=self.verbose)
         
-        # 轉換 AST 節點為設備樹節點
+        # Step 1: 轉換 AST 節點為設備樹節點（跳過引用節點）
         root_node = self._convert_ast_to_node(ast_root)
         device_tree.root = root_node
         device_tree.add_node(root_node)
         
-        # 遞歸處理所有節點
+        # Step 2: 遞歸處理所有正常節點（跳過引用節點）
         self._process_all_nodes_from_ast(device_tree, root_node, ast_root)
+        
+        # Step 3: 處理節點引用和屬性合併
+        self._process_node_references(device_tree, ast_root)
         
         if self.verbose:
             print(f"    Built device tree with {len(device_tree.get_all_nodes())} nodes")
@@ -468,10 +524,16 @@ class DTCSimulator:
         return node
         
     def _process_all_nodes_from_ast(self, device_tree: DeviceTree, parent_node: DTSNode, parent_ast):
-        """遞歸處理所有節點，建立父子關係"""
+        """遞歸處理所有正常節點，建立父子關係（跳過引用節點）"""
         
-        # 處理子節點
+        # 處理子節點（跳過引用節點）
         for child_name, child_ast in parent_ast.children.items():
+            # 跳過引用節點，這些將在後續單獨處理
+            if hasattr(child_ast, 'is_reference') and child_ast.is_reference:
+                if self.verbose:
+                    print(f"    Skipping reference node &{child_ast.name} for later processing")
+                continue
+                
             child_node = self._convert_ast_to_node(child_ast)
             parent_node.add_child(child_node)
             
@@ -480,6 +542,70 @@ class DTCSimulator:
             
             # 遞歸處理子節點
             self._process_all_nodes_from_ast(device_tree, child_node, child_ast)
+    
+    def _process_node_references(self, device_tree: DeviceTree, ast_root):
+        """處理節點引用（&label語法）並合併屬性"""
+        # 收集所有引用節點
+        reference_nodes = []
+        self._collect_reference_nodes(ast_root, reference_nodes)
+        
+        if self.verbose and reference_nodes:
+            print(f"    Processing {len(reference_nodes)} node references...")
+            
+        # 處理每個引用節點
+        for ref_ast in reference_nodes:
+            target_label = ref_ast.name
+            target_node = device_tree.find_node_by_label(target_label)
+            
+            if target_node is None:
+                if self.verbose:
+                    print(f"    Warning: Cannot find target node with label '{target_label}' for reference")
+                continue
+            
+            if self.verbose:
+                print(f"    Merging &{target_label} properties into {target_node.get_path()}")
+            
+            # 合併屬性（引用節點的屬性會覆蓋目標節點的同名屬性）
+            for prop_name, prop_value in ref_ast.properties.items():
+                dts_prop = DTSProperty()
+                dts_prop.name = prop_name
+                dts_prop.type = prop_value.type
+                dts_prop.value = prop_value.value
+                dts_prop.raw_value = prop_value.raw
+                dts_prop.source_file = ref_ast.source_file
+                dts_prop.line_number = ref_ast.line
+                
+                # 覆蓋或添加屬性
+                if prop_name in target_node.properties:
+                    if self.verbose:
+                        print(f"      Overriding {prop_name}: {target_node.properties[prop_name].value} -> {prop_value.value}")
+                else:
+                    if self.verbose:
+                        print(f"      Adding {prop_name}: {prop_value.value}")
+                
+                target_node.properties[prop_name] = dts_prop
+            
+            # 遞歸處理引用節點的子節點（添加到目標節點）
+            for child_name, child_ast in ref_ast.children.items():
+                child_node = self._convert_ast_to_node(child_ast)
+                target_node.add_child(child_node)
+                device_tree.add_node(child_node)
+                
+                if self.verbose:
+                    print(f"      Adding child node {child_name} to {target_node.get_path()}")
+                
+                # 遞歸處理子節點的子節點
+                self._process_all_nodes_from_ast(device_tree, child_node, child_ast)
+    
+    def _collect_reference_nodes(self, ast_node, reference_list):
+        """遞歸收集所有引用節點"""
+        # 檢查當前節點的子節點
+        for child_name, child_ast in ast_node.children.items():
+            if hasattr(child_ast, 'is_reference') and child_ast.is_reference:
+                reference_list.append(child_ast)
+            else:
+                # 遞歸檢查非引用節點的子節點
+                self._collect_reference_nodes(child_ast, reference_list)
             
     def _resolve_phandle_references(self, device_tree: DeviceTree):
         """解析所有 phandle 引用"""
@@ -573,10 +699,12 @@ class DTCSimulator:
         """遞歸生成節點的文本表示"""
         indent = "    " * indent_level
         
-        # 節點開始註解 - 嘗試從源文件信息中提取真實的源文件
+        # 節點開始註解 - 使用正確的源文件和行號
         actual_source_file = self._extract_actual_source_file(node)
+        actual_line_number = self._extract_actual_source_line(node)
+        
         if actual_source_file:
-            lines.append(f"{indent}/* Source: {os.path.basename(actual_source_file)}:{node.line_number} */")
+            lines.append(f"{indent}/* Source: {os.path.basename(actual_source_file)}:{actual_line_number} */")
         elif node.source_file:
             lines.append(f"{indent}/* Source: {os.path.basename(node.source_file)}:{node.line_number} */")
             
@@ -594,7 +722,8 @@ class DTCSimulator:
             
         # 屬性
         for prop_name, prop in sorted(node.properties.items()):
-            self._generate_property_text(prop, lines, indent_level + 1, actual_source_file)
+            prop_source_info = f"{actual_source_file}:{actual_line_number}" if actual_source_file else None
+            self._generate_property_text(prop, lines, indent_level + 1, prop_source_info)
             
         # 子節點
         for child_name, child_node in sorted(node.children.items()):
@@ -607,16 +736,29 @@ class DTCSimulator:
         """從源文件映射中提取實際的源文件信息"""
         # 從預處理器的源文件映射中查找
         if hasattr(self.preprocessor, 'source_mapping'):
-            return self.preprocessor.source_mapping.get(node.line_number)
+            mapping_result = self.preprocessor.source_mapping.get(node.line_number)
+            if mapping_result:
+                # 如果包含行號信息，只返回文件名部分
+                if ':' in mapping_result:
+                    return mapping_result.split(':')[0]
+                return mapping_result
         return None
+    
+    def _extract_actual_source_line(self, node: DTSNode) -> Optional[str]:
+        """從源文件映射中提取原始行號"""
+        if hasattr(self.preprocessor, 'source_mapping'):
+            mapping_result = self.preprocessor.source_mapping.get(node.line_number)
+            if mapping_result and ':' in mapping_result:
+                return mapping_result.split(':', 1)[1]
+        return str(node.line_number)
         
-    def _generate_property_text(self, prop: DTSProperty, lines: List[str], indent_level: int, actual_source_file: str = None):
+    def _generate_property_text(self, prop: DTSProperty, lines: List[str], indent_level: int, prop_source_info: str = None):
         """生成屬性的文本表示"""
         indent = "    " * indent_level
         
-        # 屬性來源註解（使用實際源文件或屬性源文件）
-        if actual_source_file:
-            source_comment = f" /* {os.path.basename(actual_source_file)}:{prop.line_number} */"
+        # 屬性來源註解（使用傳入的源信息）
+        if prop_source_info:
+            source_comment = f" /* {os.path.basename(prop_source_info)} */"
         elif prop.source_file:
             source_comment = f" /* {os.path.basename(prop.source_file)}:{prop.line_number} */"
         else:

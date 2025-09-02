@@ -27,6 +27,14 @@ def setup_dtc_parser(subparser):
     dtc_parser.add_argument('-I', '--include', action='append', dest='include_paths', 
                            help='添加 include 搜索路徑')
     
+    # Validation options
+    dtc_parser.add_argument('--validate', action='store_true', 
+                           help='在編譯後自動驗證 DTB 輸出')
+    dtc_parser.add_argument('--test-overlays', action='store_true',
+                           help='測試 node reference overlay 功能（適用於測試文件）')
+    dtc_parser.add_argument('--no-warnings', action='store_true',
+                           help='驗證時不顯示警告信息')
+    
     return dtc_parser
 
 def setup_overlay_parser(subparser):
@@ -135,14 +143,14 @@ def main():
                 print("請使用 dtc 命令進行基本的 DTS 編譯")
                 return 1
         else:
-            print(f"❌ 未知命令: {args.command}")
+            print(f"[ERROR] Unknown command: {args.command}")
             return 1
             
     except KeyboardInterrupt:
-        print("\n⚠️  操作被用戶中斷")
+        print("\n[WARN] Operation interrupted by user")
         return 130
     except Exception as e:
-        print(f"❌ 執行錯誤: {e}")
+        print(f"[ERROR] Execution error: {e}")
         if hasattr(args, 'verbose') and args.verbose:
             import traceback
             traceback.print_exc()
