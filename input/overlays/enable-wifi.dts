@@ -1,0 +1,158 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+/dts-v1/;
+
+#include "../include/rk3588-soc.dtsi"
+
+// WiFi/Bluetooth Overlay - Enable SDIO WiFi and additional I2C sensors
+
+// Enable SDIO for WiFi module  
+&sdmmc1 {
+    status = "okay";
+    bus-width = <4>;
+    cap-sd-highspeed;
+    cap-sdio-irq;
+    disable-wp;
+    keep-power-in-suspend;
+    mmc-pwrseq = <&sdio_pwrseq>;
+    non-removable;
+    pinctrl-names = "default";
+    pinctrl-0 = <&sdmmc1_bus4 &sdmmc1_cmd &sdmmc1_clk>;
+    sd-uhs-sdr50;
+    vmmc-supply = <&vcc3v3_sys>;
+    vqmmc-supply = <&vcc_1v8_s0>;
+};
+
+// Enable I2C3 for WiFi/BT module control
+&i2c3 {
+    status = "okay";
+    clock-frequency = <400000>;
+    
+    // WiFi/BT power management IC
+    ap6275s: wifi@10 {
+        compatible = "brcm,bcm4329-fmac";
+        reg = <0x10>;
+        interrupt-parent = <&gpio0>;
+        interrupts = <9 4>; // GPIO0_B1
+        interrupt-names = "host-wake";
+        brcm,drive-strength = <5>;
+        pinctrl-names = "default";
+        pinctrl-0 = <&wifi_host_wake_irq>;
+    };
+};
+
+// Enable I2C4 for additional sensors
+&i2c4 {
+    status = "okay";
+    clock-frequency = <400000>;
+
+    // IMU Sensor
+    mpu6050: imu@68 {
+        compatible = "invensense,mpu6050";
+        reg = <0x68>;
+        interrupt-parent = <&gpio1>;
+        interrupts = <8 2>; // GPIO1_B0, falling edge
+        mount-matrix = "1", "0", "0",
+                       "0", "-1", "0", 
+                       "0", "0", "-1";
+        vdd-supply = <&vcc_3v3_s0>;
+        vddio-supply = <&vcc_3v3_s0>;
+    };
+
+    // Temperature/Humidity Sensor
+    si7020: temp-humidity@40 {
+        compatible = "silabs,si7020";
+        reg = <0x40>;
+        vdd-supply = <&vcc_3v3_s0>;
+    };
+
+    // Light Sensor
+    opt3001: light@44 {
+        compatible = "ti,opt3001";
+        reg = <0x44>;
+        interrupt-parent = <&gpio1>;
+        interrupts = <9 1>; // GPIO1_B1, rising edge  
+        vcc-supply = <&vcc_3v3_s0>;
+    };
+
+    // EEPROM for calibration data
+    at24c02: eeprom@50 {
+        compatible = "atmel,24c02";
+        reg = <0x50>;
+        pagesize = <8>;
+        size = <256>;
+        address-width = <8>;
+    };
+};
+
+// Enable SPI1 for external flash
+&spi1 {
+    status = "okay";
+    pinctrl-names = "default";
+    pinctrl-0 = <&spi1m1_pins>;
+    
+    spiflash: flash@0 {
+        compatible = "jedec,spi-flash";
+        reg = <0>;
+        spi-max-frequency = <25000000>;
+        spi-rx-bus-width = <1>;
+        spi-tx-bus-width = <1>;
+        
+        partitions {
+            compatible = "fixed-partitions";
+            #address-cells = <1>;
+            #size-cells = <1>;
+            
+            partition@0 {
+                label = "bootloader";
+                reg = <0x0 0x100000>;
+                read-only;
+            };
+            
+            partition@100000 {
+                label = "firmware";
+                reg = <0x100000 0x300000>;
+            };
+            
+            partition@400000 {
+                label = "data";
+                reg = <0x400000 0x400000>;
+            };
+        };
+    };
+};
+
+// Add root-level configurations
+/ {
+    // WiFi power sequence
+    sdio_pwrseq: sdio-pwrseq {
+        compatible = "mmc-pwrseq-simple";
+        clocks = <&wifi_32k>;
+        clock-names = "ext_clock";
+        pinctrl-names = "default";
+        pinctrl-0 = <&wifi_enable_h>;
+        post-power-on-delay-ms = <200>;
+        power-off-delay-us = <5000000>;
+        reset-gpios = <&gpio0 8 1>; // GPIO0_B0, active low
+    };
+
+    // 32.768kHz clock for WiFi
+    wifi_32k: wifi-32k-clock {
+        compatible = "fixed-clock";
+        #clock-cells = <0>;
+        clock-frequency = <32768>;
+        clock-output-names = "wifi_32k";
+    };
+
+    // Additional regulators for sensors
+    vcc3v3_sensors: vcc3v3-sensors-regulator {
+        compatible = "regulator-fixed";
+        regulator-name = "vcc3v3_sensors";
+        regulator-min-microvolt = <3300000>;
+        regulator-max-microvolt = <3300000>;
+        gpio = <&gpio2 23 0>;
+        enable-active-high;
+        regulator-always-on;
+        regulator-boot-on;
+        vin-supply = <&vcc_3v3_s0>;
+    };
+};
