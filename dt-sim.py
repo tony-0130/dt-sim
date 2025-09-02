@@ -125,22 +125,13 @@ def main():
                 print("請確保 commands/dtc_command.py 文件存在")
                 return 1
                 
-        elif args.command == 'overlay':
-            try:
-                from commands.overlay_command import execute
-                return execute(args)
-            except ImportError:
-                print("❌ overlay 命令尚未實現")
-                print("請使用 dtc 命令進行基本的 DTS 編譯")
-                return 1
-                
         elif args.command == 'fdtoverlay':
             try:
                 from commands.fdtoverlay_command import execute  
                 return execute(args)
             except ImportError:
-                print("❌ fdtoverlay 命令尚未實現")
-                print("請使用 dtc 命令進行基本的 DTS 編譯")
+                print("❌ 無法導入 fdtoverlay_command: {e}")
+                print("請確保 commands/fdtoverlay_command.py 文件存在")
                 return 1
         else:
             print(f"[ERROR] Unknown command: {args.command}")
