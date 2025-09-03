@@ -1,0 +1,13 @@
+{
+  "description": "Common GPIO bindings from dt-bindings/gpio/gpio.h",
+  "constants": {
+    "GPIO_ACTIVE_HIGH": "0",
+    "GPIO_ACTIVE_LOW": "1",
+    "GPIO_OPEN_DRAIN": "2",
+    "GPIO_OPEN_SOURCE": "4",
+    "GPIO_PUSH_PULL": "0",
+    "GPIO_PULL_UP": "1",
+    "GPIO_PULL_DOWN": "2",
+    "GPIO_PULL_DISABLE": "0"
+  }
+}

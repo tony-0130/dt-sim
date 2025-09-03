@@ -1,21 +1,21 @@
 """
-commands/fdtoverlay_command.py - fdtoverlay 命令實現
-模擬 fdtoverlay 工具，將 base DTB 和 overlay DTBO 合併成最終 DTB
+commands/fdtoverlay_command.py - fdtoverlay command implementation
+Simulates fdtoverlay tool, merging base DTB and overlay DTBO into final DTB
 """
 
 import os
 import sys
 
-# 導入核心合併邏輯
+# Import core merge logic
 from simulators.fdtoverlay_merger import FDTOverlayMerger
 
 def execute(args) -> int:
-    """執行 fdtoverlay 命令"""
+    """Execute fdtoverlay command"""
     try:
         if args.verbose:
-            print(f"dt-sim fdtoverlay: 合併 {os.path.basename(args.base)} + {len(args.overlays)} overlays -> {os.path.basename(args.output)}")
+            print(f"dt-sim fdtoverlay: merging {os.path.basename(args.base)} + {len(args.overlays)} overlays -> {os.path.basename(args.output)}")
         
-        # 檢查輸入文件
+        # Check input files
         if not os.path.exists(args.base):
             print(f"[ERROR] Base file not found: {args.base}")
             return 1
@@ -25,12 +25,12 @@ def execute(args) -> int:
                 print(f"[ERROR] Overlay file not found: {overlay_file}")
                 return 1
         
-        # 創建輸出目錄
+        # Create output directory
         output_dir = os.path.dirname(args.output)
         if output_dir and not os.path.exists(output_dir):
             os.makedirs(output_dir)
         
-        # 使用核心合併邏輯
+        # Use core merge logic
         merger = FDTOverlayMerger()
         
         if args.verbose:

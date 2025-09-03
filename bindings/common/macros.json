@@ -1,0 +1,13 @@
+{
+  "description": "Common function-like macros",
+  "macros": {
+    "BIT": {
+      "params": ["n"],
+      "definition": "(1 << n)"
+    },
+    "GENMASK": {
+      "params": ["h", "l"],
+      "definition": "(((~0UL) << (l)) & (~0UL >> (63 - (h))))"
+    }
+  }
+}

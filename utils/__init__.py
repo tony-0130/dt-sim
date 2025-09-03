@@ -1,5 +1,5 @@
 """
-dt-sim utils module - 工具函數
+dt-sim utils module - Utility Functions
 """
 
 from .error_reporter import ErrorReporter

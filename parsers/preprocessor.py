@@ -1,11 +1,11 @@
 """
-parsers/preprocessor.py - DTS 預處理器
+parsers/preprocessor.py - DTS Preprocessor
 
-處理 DTS 文件中的預處理指令：
-- #include "file.dtsi" 和 #include <file.dtsi>
+Handle preprocessing directives in DTS files:
+- #include "file.dtsi" and #include <file.dtsi>
 - #define SYMBOL VALUE
-- 基本的宏展開
-- 條件編譯（簡單支持）
+- Basic macro expansion
+- Conditional compilation (simple support)
 """
 
 import os
@@ -15,23 +15,23 @@ from pathlib import Path
 from utils.error_reporter import ErrorReporter
 
 class PreprocessorError(Exception):
-    """預處理器錯誤"""
+    """Preprocessor error"""
     pass
 
 
 class Macro:
-    """宏定義"""
+    """Macro definition"""
     def __init__(self, name: str, value: str, params: List[str] = None, 
                  source_file: str = "", line_number: int = 0):
         self.name = name
         self.value = value
-        self.params = params or []  # 函數式宏的參數
+        self.params = params or []  # Function-like macro parameters
         self.source_file = source_file
         self.line_number = line_number
         self.is_function_like = len(self.params) > 0
     
     def expand(self, args: List[str] = None) -> str:
-        """展開宏"""
+        """Expand macro"""
         if self.is_function_like:
             if not args or len(args) != len(self.params):
                 raise PreprocessorError(
@@ -39,7 +39,7 @@ class Macro:
                     f"got {len(args) if args else 0}"
                 )
             
-            # 替換參數
+            # Replace parameters
             result = self.value
             for param, arg in zip(self.params, args):
                 result = result.replace(param, arg)
@@ -49,7 +49,7 @@ class Macro:
 
 
 class Preprocessor:
-    """DTS 預處理器"""
+    """DTS Preprocessor"""
     
     def __init__(self, verbose: bool = False):
         self.included_files: Set[str] = set()
@@ -57,23 +57,52 @@ class Preprocessor:
         self.macros: Dict[str, Macro] = {}
         self.verbose = verbose
         
-        # 內建宏定義
+        # Built-in macro definitions
         self._setup_builtin_macros()
     
     def _setup_builtin_macros(self):
-        """設置內建宏定義"""
-        # 常用的 DTS 宏定義
-        builtins = {
+        """Setup built-in macro definitions"""
+        # Basic DTS macros
+        basic_builtins = {
             '__DTS__': '1',
-            '__FILE__': '""',  # 在處理時會被替換為實際文件名
-            '__LINE__': '0',   # 在處理時會被替換為實際行號
+            '__FILE__': '""',  # Will be replaced with actual filename during processing
+            '__LINE__': '0',   # Will be replaced with actual line number during processing
         }
         
-        for name, value in builtins.items():
+        # Add basic macros
+        for name, value in basic_builtins.items():
             self.macros[name] = Macro(name, value, source_file="<builtin>")
     
+    def load_platform_bindings(self, platform: str = None, auto_detect: bool = True, content: str = ""):
+        """Load platform-specific bindings"""
+        try:
+            from bindings import BindingManager
+            
+            binding_manager = BindingManager()
+            constants, macros = binding_manager.load_bindings(platform, auto_detect, content)
+            
+            if self.verbose:
+                if platform:
+                    print(f"  Loading bindings for platform: {platform}")
+                else:
+                    print("  Loading common bindings")
+                print(f"  Loaded {len(constants)} constants, {len(macros)} macros")
+            
+            # Add constants as macros
+            for name, value in constants.items():
+                self.macros[name] = Macro(name, value, source_file="<platform-binding>")
+            
+            # Add function-like macros
+            for name, (params, definition) in macros.items():
+                self.macros[name] = Macro(name, definition, params, source_file="<platform-binding>")
+                
+        except Exception as e:
+            if self.verbose:
+                print(f"  Warning: Failed to load platform bindings: {e}")
+                print("  Continuing with basic macros only")
+    
     def add_include_path(self, path: str):
-        """添加 include 搜索路徑"""
+        """Add include search path"""
         abs_path = os.path.abspath(path)
         if abs_path not in self.include_paths:
             self.include_paths.append(abs_path)
@@ -81,26 +110,39 @@ class Preprocessor:
                 print(f"Added include path: {abs_path}")
     
     def define_macro(self, name: str, value: str = "", params: List[str] = None):
-        """定義宏（用於命令行 -D 選項）"""
+        """Define macro (for command line -D option)"""
         self.macros[name] = Macro(name, value, params, source_file="<command-line>")
     
-    def process_file(self, file_path: str, base_dir: str = None) -> str:
-        """處理文件的所有預處理指令"""
+    def process_file(self, file_path: str, base_dir: str = None, platform: str = None) -> str:
+        """Process all preprocessing directives in file"""
         if base_dir is None:
             base_dir = os.path.dirname(os.path.abspath(file_path))
             
-        self.add_include_path(base_dir)  # 添加文件所在目錄
+        self.add_include_path(base_dir)  # Add file directory
+        
+        # Load platform bindings before processing
+        if self.verbose:
+            print("  Loading platform-specific bindings...")
+        
+        # Read file content for platform detection
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                initial_content = f.read()
+        except:
+            initial_content = ""
+        
+        self.load_platform_bindings(platform=platform, auto_detect=True, content=initial_content)
         
         return self.process_includes(file_path, base_dir)
     
     def process_includes(self, file_path: str, base_dir: str = None) -> str:
-        """處理文件中的所有 #include 指令"""
+        """Process all #include directives in file"""
         if base_dir is None:
             base_dir = os.path.dirname(os.path.abspath(file_path))
             
         abs_path = os.path.abspath(file_path)
         
-        # 防止循環引用
+        # Prevent circular references
         if abs_path in self.included_files:
             if self.verbose:
                 print(f"Skipping already included file: {os.path.basename(file_path)}")
@@ -118,7 +160,7 @@ class Preprocessor:
         except UnicodeDecodeError:
             raise PreprocessorError(f"Cannot decode file (not UTF-8): {file_path}")
         
-        # 逐行處理
+        # Process line by line
         result_lines = []
         lines = content.split('\n')
         
@@ -143,26 +185,26 @@ class Preprocessor:
     
     def _process_line(self, line: str, current_file: str, line_num: int, 
                      base_dir: str, result_lines: List[str]) -> Optional[str]:
-        """處理單行內容"""
+        """Process single line content"""
         stripped = line.strip()
         
-        # 空行和註釋直接保留
+        # Preserve empty lines and comments directly
         if not stripped or stripped.startswith('//') or stripped.startswith('/*'):
             return line
         
-        # 處理 #include 指令
+        # Process #include directive
         if stripped.startswith('#include'):
             return self._process_include(stripped, current_file, line_num, base_dir)
         
-        # 處理 #define 指令
+        # Process #define directive
         elif stripped.startswith('#define'):
             return self._process_define(stripped, current_file, line_num)
         
-        # 處理 #undef 指令
+        # Process #undef directive
         elif stripped.startswith('#undef'):
             return self._process_undef(stripped, current_file, line_num)
         
-        # 處理條件編譯（簡單支持）
+        # Process conditional compilation (simple support)
         elif stripped.startswith('#ifdef'):
             return self._process_ifdef(stripped, current_file, line_num)
         elif stripped.startswith('#ifndef'):
@@ -170,25 +212,46 @@ class Preprocessor:
         elif stripped.startswith('#endif'):
             return self._process_endif(stripped, current_file, line_num)
         
-        # 其他預處理指令忽略（但保留註釋）
+        # Check if it's a real C preprocessor directive vs DTS property
         elif stripped.startswith('#'):
-            return f"/* Ignored preprocessor directive: {stripped} */"
+            # Common C preprocessor directives
+            c_directives = ['#if', '#ifdef', '#ifndef', '#else', '#elif', '#endif', 
+                          '#error', '#warning', '#pragma', '#line']
+            
+            # Check if it's a C preprocessor directive
+            is_c_directive = any(stripped.startswith(directive) for directive in c_directives)
+            
+            if is_c_directive:
+                return f"/* Ignored C preprocessor directive: {stripped} */"
+            else:
+                # This might be a DTS property (like #address-cells, #cooling-cells etc.), keep as is
+                return self._expand_macros(line)
         
-        # 普通行 - 進行宏展開
+        # Regular line - perform macro expansion
         else:
             return self._expand_macros(line)
     
     def _process_include(self, line: str, current_file: str, line_num: int, 
                         base_dir: str) -> List[str]:
-        """處理 #include 指令"""
+        """Process #include directive"""
         include_file = self._parse_include_line(line)
         if not include_file:
             ErrorReporter.warning(f"Invalid #include syntax: {line}", 
                                 f"{current_file}:{line_num}")
             return [f"/* Invalid include: {line} */"]
         
+        # Skip .h header files (C kernel headers) - only process .dtsi files
+        if include_file.endswith('.h'):
+            if self.verbose:
+                print(f"  Skipping C header file: {include_file}")
+            return [f"/* Skipped C header: {include_file} */"]
+        
         include_path = self._resolve_include_path(include_file, base_dir)
         if not include_path:
+            # For .h files that we can't find, just skip silently
+            if include_file.endswith('.h'):
+                return [f"/* Skipped missing C header: {include_file} */"]
+            
             ErrorReporter.include_file_not_found(
                 include_file, current_file, self.include_paths
             )
@@ -197,11 +260,11 @@ class Preprocessor:
         if self.verbose:
             print(f"  Including: {include_file} -> {os.path.basename(include_path)}")
         
-        # 添加來源註解
+        # Add source annotation
         result = [f"/* Include from {include_path} */"]
         
         try:
-            # 遞迴處理 include
+            # Recursively process include
             included_content = self.process_includes(include_path, os.path.dirname(include_path))
             result.append(included_content)
             result.append(f"/* End of {include_path} */")
@@ -213,8 +276,8 @@ class Preprocessor:
         return result
     
     def _process_define(self, line: str, current_file: str, line_num: int) -> Optional[str]:
-        """處理 #define 指令"""
-        # 解析 #define 語法
+        """Process #define directive"""
+        # Parse #define syntax
         match = re.match(r'#define\s+(\w+)(?:\((.*?)\))?\s*(.*)', line)
         if not match:
             ErrorReporter.warning(f"Invalid #define syntax: {line}", 
@@ -225,12 +288,12 @@ class Preprocessor:
         macro_params = match.group(2)
         macro_value = match.group(3).strip()
         
-        # 解析參數（如果是函數式宏）
+        # Parse parameters (if function-like macro)
         params = []
         if macro_params:
             params = [p.strip() for p in macro_params.split(',') if p.strip()]
         
-        # 創建宏定義
+        # Create macro definition
         macro = Macro(macro_name, macro_value, params, current_file, line_num)
         self.macros[macro_name] = macro
         
@@ -241,7 +304,7 @@ class Preprocessor:
         return f"/* #define {macro_name} {macro_value} */"
     
     def _process_undef(self, line: str, current_file: str, line_num: int) -> Optional[str]:
-        """處理 #undef 指令"""
+        """Process #undef directive"""
         match = re.match(r'#undef\s+(\w+)', line)
         if not match:
             ErrorReporter.warning(f"Invalid #undef syntax: {line}", 
@@ -257,17 +320,17 @@ class Preprocessor:
         return f"/* #undef {macro_name} */"
     
     def _process_ifdef(self, line: str, current_file: str, line_num: int) -> Optional[str]:
-        """處理 #ifdef 指令（簡單實現）"""
+        """Process #ifdef directive (simple implementation)"""
         match = re.match(r'#ifdef\s+(\w+)', line)
         if not match:
             return f"/* Invalid ifdef: {line} */"
         
         macro_name = match.group(1)
-        # 簡單實現：總是認為條件為真（在真實實現中需要條件編譯堆棧）
+        # Simple implementation: always consider condition as true (real implementation would need conditional compilation stack)
         return f"/* #ifdef {macro_name} (always true in dt-sim) */"
     
     def _process_ifndef(self, line: str, current_file: str, line_num: int) -> Optional[str]:
-        """處理 #ifndef 指令（簡單實現）"""
+        """Process #ifndef directive (simple implementation)"""
         match = re.match(r'#ifndef\s+(\w+)', line)
         if not match:
             return f"/* Invalid ifndef: {line} */"
@@ -276,37 +339,72 @@ class Preprocessor:
         return f"/* #ifndef {macro_name} (always true in dt-sim) */"
     
     def _process_endif(self, line: str, current_file: str, line_num: int) -> Optional[str]:
-        """處理 #endif 指令"""
+        """Process #endif directive"""
         return f"/* #endif */"
     
     def _expand_macros(self, line: str) -> str:
-        """展開行中的宏"""
+        """Expand macros in line"""
         result = line
         
-        # 簡單的宏展開（不支持函數式宏的複雜情況）
+        # First process function-like macros
+        for macro_name, macro in self.macros.items():
+            if macro.is_function_like:
+                # Match function-like macro calls: MACRO_NAME(arg1, arg2, ...)
+                pattern = r'\b' + re.escape(macro_name) + r'\s*\(([^)]*)\)'
+                matches = list(re.finditer(pattern, result))
+                
+                # Replace from back to front, avoiding position offset issues
+                for match in reversed(matches):
+                    args_str = match.group(1).strip()
+                    if args_str:
+                        args = [arg.strip() for arg in args_str.split(',')]
+                    else:
+                        args = []
+                    
+                    try:
+                        expanded = macro.expand(args)
+                        result = result[:match.start()] + expanded + result[match.end():]
+                    except PreprocessorError as e:
+                        # Keep original call, add comment
+                        original = match.group(0)
+                        result = result[:match.start()] + f"{original} /* ERROR: {e} */" + result[match.end():]
+        
+        # Then process simple macros
         for macro_name, macro in self.macros.items():
             if not macro.is_function_like:
-                # 只替換完整的標識符
+                # Only replace complete identifiers
                 pattern = r'\b' + re.escape(macro_name) + r'\b'
                 if re.search(pattern, result):
                     result = re.sub(pattern, macro.value, result)
         
+        # Handle undefined constants - replace identifiers that look like constants with 0
+        # This handles constants like IMX95_CLK_*, IMX95_PAD_*, IMX95_PERF_* etc.
+        undefined_const_pattern = r'\b[A-Z][A-Z0-9_]{4,}\b'
+        undefined_matches = re.findall(undefined_const_pattern, result)
+        
+        for match in set(undefined_matches):  # Use set to avoid duplicates
+            # Skip known macros
+            if match not in self.macros:
+                # Replace undefined constants with 0 (don't add comments to avoid parsing issues)
+                pattern = r'\b' + re.escape(match) + r'\b'
+                result = re.sub(pattern, '0', result)
+        
         return result
     
     def _parse_include_line(self, line: str) -> Optional[str]:
-        """解析 #include 行，提取文件路徑"""
-        # 支援兩種格式: #include "file.dtsi" 和 #include <file.dtsi>
+        """Parse #include line, extract file path"""
+        # Support two formats: #include "file.dtsi" and #include <file.dtsi>
         match = re.match(r'#include\s*[<"](.*?)[>"]', line)
         return match.group(1) if match else None
     
     def _resolve_include_path(self, include_file: str, base_dir: str) -> Optional[str]:
-        """解析 include 文件的絕對路徑"""
-        # 首先在同一目錄中查找
+        """Resolve absolute path of include file"""
+        # First search in the same directory
         local_path = os.path.join(base_dir, include_file)
         if os.path.exists(local_path):
             return os.path.abspath(local_path)
         
-        # 然後在 include 路徑中查找
+        # Then search in include paths
         for include_dir in self.include_paths:
             full_path = os.path.join(include_dir, include_file)
             if os.path.exists(full_path):
@@ -315,7 +413,7 @@ class Preprocessor:
         return None
     
     def get_statistics(self) -> Dict[str, any]:
-        """獲取預處理統計信息"""
+        """Get preprocessing statistics"""
         return {
             "included_files": list(self.included_files),
             "include_paths": self.include_paths,
@@ -324,20 +422,20 @@ class Preprocessor:
         }
     
     def reset(self):
-        """重置預處理器狀態（用於處理新文件）"""
+        """Reset preprocessor state (for processing new files)"""
         self.included_files.clear()
-        # 保留 include_paths 和用戶定義的宏
+        # Keep include_paths and user-defined macros
         
-        # 重新設置內建宏
+        # Re-setup built-in macros
         self._setup_builtin_macros()
 
 
-# 用於測試的輔助函數
+# Helper functions for testing
 
 def create_test_files():
-    """創建測試用的 DTS 文件"""
+    """Create test DTS files"""
     
-    # 創建測試目錄
+    # Create test directory
     test_dir = Path("test_preprocessor")
     test_dir.mkdir(exist_ok=True)
     
@@ -411,7 +509,7 @@ intc: interrupt-controller {
 };
 """
     
-    # 寫入文件
+    # Write files
     with open(test_dir / "common.dtsi", 'w') as f:
         f.write(common_dtsi)
     
@@ -425,39 +523,39 @@ intc: interrupt-controller {
 
 
 def test_preprocessor():
-    """測試預處理器功能"""
-    print("=== 測試 DTS 預處理器 ===")
+    """Test preprocessor functionality"""
+    print("=== Test DTS Preprocessor ===")
     
-    # 創建測試文件
+    # Create test files
     test_dir = create_test_files()
     
     try:
-        # 創建預處理器
+        # Create preprocessor
         preprocessor = Preprocessor(verbose=True)
         
-        # 處理主文件
+        # Process main file
         main_file = test_dir / "main.dts"
         result = preprocessor.process_file(str(main_file))
         
-        print("\n=== 預處理結果 ===")
+        print("\n=== Preprocessing Results ===")
         print(result)
         
-        # 顯示統計信息
+        # Display statistics
         stats = preprocessor.get_statistics()
-        print(f"\n=== 統計信息 ===")
-        print(f"處理文件數: {stats['total_files_processed']}")
-        print(f"包含路徑: {stats['include_paths']}")
-        print(f"定義的宏: {stats['defined_macros']}")
+        print(f"\n=== Statistics ===")
+        print(f"Files processed: {stats['total_files_processed']}")
+        print(f"Include paths: {stats['include_paths']}")
+        print(f"Defined macros: {stats['defined_macros']}")
         
-        print("\n✅ 預處理器測試完成")
+        print("\n✅ Preprocessor test completed")
         
     except Exception as e:
-        print(f"❌ 預處理器測試失敗: {e}")
+        print(f"❌ Preprocessor test failed: {e}")
         import traceback
         traceback.print_exc()
     
     finally:
-        # 清理測試文件
+        # Cleanup test files
         import shutil
         if test_dir.exists():
             shutil.rmtree(test_dir)

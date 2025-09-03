@@ -1,0 +1,7 @@
+{
+  "description": "Common clock bindings",
+  "constants": {
+    "CLK_SET_RATE_PARENT": "4",
+    "CLK_IGNORE_UNUSED": "8"
+  }
+}

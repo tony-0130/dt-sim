@@ -1,6 +1,6 @@
 """
-utils/error_reporter.py - 錯誤報告器
-提供詳細、有用的錯誤報告功能
+utils/error_reporter.py - Error Reporter
+Provides detailed, useful error reporting functionality
 """
 
 import os
@@ -11,14 +11,14 @@ import difflib
 
 
 class ErrorReporter:
-    """錯誤報告器 - dt-sim 的核心價值"""
+    """Error Reporter - Core value of dt-sim"""
     
     @staticmethod
     def file_not_found(file_path: str):
-        """報告文件找不到錯誤"""
-        print(f"[ERROR] 文件不存在: {file_path}")
+        """Report file not found error"""
+        print(f"[ERROR] File does not exist: {file_path}")
         
-        # 嘗試找到相似的文件名
+        # Try to find similar filenames
         directory = os.path.dirname(file_path) or "."
         filename = os.path.basename(file_path)
         
@@ -28,22 +28,22 @@ class ErrorReporter:
                 similar_files = difflib.get_close_matches(filename, files, n=3, cutoff=0.6)
                 
                 if similar_files:
-                    print("   可能的相似文件:")
+                    print("   Possible similar files:")
                     for similar_file in similar_files:
                         full_path = os.path.join(directory, similar_file)
                         print(f"     - {full_path}")
             except PermissionError:
                 pass
         else:
-            print(f"   目錄也不存在: {directory}")
+            print(f"   Directory also does not exist: {directory}")
     
     @staticmethod
     def compilation_failed(input_file: str, error_message: str):
-        """報告編譯失敗錯誤"""
+        """Report compilation failed error"""
         print(f"[ERROR] Compilation failed: {input_file}")
         print(f"   Error: {error_message}")
         
-        # 嘗試從錯誤信息中提取行號
+        # Try to extract line number from error message
         if "line" in error_message:
             try:
                 import re
@@ -56,12 +56,12 @@ class ErrorReporter:
     
     @staticmethod
     def show_source_context(file_path: str, line_number: int, context_lines: int = 3):
-        """顯示源文件上下文"""
+        """Show source file context"""
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 lines = f.readlines()
             
-            print(f"\n[LOCATION] 錯誤位置 ({os.path.basename(file_path)}:{line_number}):")
+            print(f"\n[LOCATION] Error location ({os.path.basename(file_path)}:{line_number}):")
             print("   " + "─" * 50)
             
             start = max(0, line_number - context_lines - 1)
@@ -75,13 +75,13 @@ class ErrorReporter:
             print("   " + "─" * 50)
             
         except Exception as e:
-            print(f"   無法顯示源文件上下文: {e}")
+            print(f"   Unable to show source file context: {e}")
     
     @staticmethod
     def overlay_target_not_found(target_path: str, available_paths: List[str], 
                                 source_location: str = ""):
-        """報告 overlay target 找不到錯誤"""
-        print(f"[ERROR] Overlay target 不存在: '{target_path}'")
+        """Report overlay target not found error"""
+        print(f"[ERROR] Overlay target does not exist: '{target_path}'")
         
         if source_location:
             print(f"   位置: {source_location}")

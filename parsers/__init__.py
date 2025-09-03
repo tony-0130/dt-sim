@@ -1,5 +1,5 @@
 """
-dt-sim parsers module - DTS 解析器
+dt-sim parsers module - DTS Parser
 """
 
 from .dts_parser import DTSParser

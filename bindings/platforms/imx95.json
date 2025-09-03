@@ -1,0 +1,21 @@
+{
+  "description": "IMX95 platform-specific bindings",
+  "compatible_strings": [
+    "fsl,imx95",
+    "fsl,imx95-15x15-evk",
+    "fsl,imx95-19x19-evk"
+  ],
+  "constants": {
+    "IMX95_CLK_A55": "0",
+    "IMX95_CLK_A55_MCORE": "1",
+    "IMX95_CLK_A55_MTOP": "2",
+    "FALLING_EDGE": "BIT(0)",
+    "RISING_EDGE": "BIT(1)",
+    "BRD_SM_CTRL_SD3_WAKE": "0x8000",
+    "BRD_SM_CTRL_PCIE1_WAKE": "0x8001",
+    "BRD_SM_CTRL_BT_WAKE": "0x8002",
+    "BRD_SM_CTRL_PCIE2_WAKE": "0x8003",
+    "BRD_SM_CTRL_BUTTON": "0x8004"
+  },
+  "includes": ["common/gpio", "common/pwm", "common/interrupt", "common/clock", "common/input", "common/macros"]
+}

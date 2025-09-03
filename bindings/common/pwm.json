@@ -1,0 +1,7 @@
+{
+  "description": "Common PWM bindings from dt-bindings/pwm/pwm.h",
+  "constants": {
+    "PWM_POLARITY_NORMAL": "0",
+    "PWM_POLARITY_INVERTED": "1"
+  }
+}

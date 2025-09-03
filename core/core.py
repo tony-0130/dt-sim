@@ -1,11 +1,11 @@
 """
-core/ - Device Tree 核心資料結構
+core/ - Device Tree Core Data Structures
 
-這個模組定義了 dt-sim 中使用的核心資料結構:
-- DeviceTree: 設備樹主結構
-- DTSNode: 設備樹節點
-- DTSProperty: 設備樹屬性
-- OverlayStructure: Overlay 結構
+This module defines the core data structures used in dt-sim:
+- DeviceTree: Main device tree structure
+- DTSNode: Device tree node
+- DTSProperty: Device tree property
+- OverlayStructure: Overlay structure
 - Fragment: Overlay fragment
 """
 
@@ -17,7 +17,7 @@ from pathlib import Path
 
 @dataclass
 class DTSProperty:
-    """設備樹屬性"""
+    """Device tree property"""
     name: str = ""
     value: Any = None
     type: str = ""  # "string", "number", "array", "phandle", "empty", "bits_array", "identifier"
@@ -26,7 +26,7 @@ class DTSProperty:
     line_number: int = 0
     
     def has_phandle_reference(self) -> bool:
-        """檢查是否包含 phandle 引用"""
+        """Check if contains phandle references"""
         if self.type == "phandle":
             return True
         if self.type == "array" and isinstance(self.value, list):
@@ -34,7 +34,7 @@ class DTSProperty:
         return False
         
     def get_phandle_references(self) -> List[str]:
-        """獲取所有 phandle 引用的標籤"""
+        """Get all phandle reference labels"""
         refs = []
         if self.type == "phandle":
             if isinstance(self.value, str) and self.value.startswith('&'):
@@ -50,7 +50,7 @@ class DTSProperty:
         return refs
     
     def to_dts_string(self) -> str:
-        """將屬性轉換為 DTS 字符串格式"""
+        """Convert property to DTS string format"""
         if self.type == "empty":
             return f"{self.name};"
         elif self.type == "string":
@@ -141,7 +141,7 @@ class DTSNode:
         self.properties[prop.name] = prop
     
     def to_dts_string(self, indent_level: int = 0) -> str:
-        """將節點轉換為 DTS 字符串格式"""
+        """Convert node to DTS string format"""
         indent = "    " * indent_level
         lines = []
         
@@ -203,7 +203,7 @@ class DeviceTree:
                 if self.verbose:
                     print(f"      Mapped label '{label}' to node {node.get_path()}")
             
-        # 分配 phandle（如果節點有標籤）
+        # Assign phandle (if node has labels)
         if node.labels and node.phandle is None:
             node.phandle = self.next_phandle
             self.phandle_map[self.next_phandle] = node
@@ -222,7 +222,7 @@ class DeviceTree:
         return self.label_map.get(label)
         
     def find_node_by_phandle(self, phandle: int) -> Optional[DTSNode]:
-        """根據 phandle 查找節點"""
+        """Find node by phandle"""
         return self.phandle_map.get(phandle)
         
     def get_all_nodes(self) -> List[DTSNode]:
@@ -240,7 +240,7 @@ class DeviceTree:
         return self.root.get_all_paths()
     
     def validate_phandle_references(self) -> List[str]:
-        """驗證所有 phandle 引用，返回錯誤列表"""
+        """Validate all phandle references, return error list"""
         errors = []
         
         for node in self.get_all_nodes():
@@ -274,7 +274,7 @@ class DeviceTree:
 class Fragment:
     """Overlay Fragment"""
     target_path: str = ""
-    target_label: str = ""  # 如果使用 &label 語法
+    target_label: str = ""  # If using &label syntax
     target_phandle: Optional[int] = None
     overlay_node: Optional[DTSNode] = None
     source_file: str = ""
@@ -292,7 +292,7 @@ class Fragment:
             return "unknown"
     
     def validate_target(self, base_tree: DeviceTree) -> Optional[str]:
-        """驗證目標在 base tree 中存在，返回錯誤信息或 None"""
+        """Validate target exists in base tree, return error message or None"""
         if self.target_label:
             target_node = base_tree.find_node_by_label(self.target_label)
             if not target_node:
@@ -312,7 +312,7 @@ class Fragment:
 
 
 class OverlayStructure:
-    """Overlay 結構"""
+    """Overlay structure"""
     
     def __init__(self):
         self.fragments: List[Fragment] = []
@@ -320,11 +320,11 @@ class OverlayStructure:
         self.metadata: Dict[str, Any] = {}
         
     def add_fragment(self, fragment: Fragment):
-        """添加 fragment"""
+        """Add fragment"""
         self.fragments.append(fragment)
         
     def validate_against_base(self, base_tree: DeviceTree) -> List[str]:
-        """針對 base tree 驗證所有 fragments，返回錯誤列表"""
+        """Validate all fragments against base tree, return error list"""
         errors = []
         
         for i, fragment in enumerate(self.fragments):
@@ -336,7 +336,7 @@ class OverlayStructure:
         return errors
     
     def get_statistics(self) -> Dict[str, Any]:
-        """獲取 overlay 統計信息"""
+        """Get overlay statistics"""
         return {
             "total_fragments": len(self.fragments),
             "source_file": self.source_file,
@@ -350,7 +350,7 @@ def suggest_similar_path(target_path: str, available_paths: List[str], max_sugge
     """建議相似的路徑（用於錯誤提示）"""
     import difflib
     
-    # 使用 difflib 找到最相似的路徑
+    # Use difflib to find most similar path
     matches = difflib.get_close_matches(target_path, available_paths, n=max_suggestions, cutoff=0.3)
     return matches
 
@@ -390,19 +390,19 @@ def is_root_node(node: DTSNode) -> bool:
 
 
 def is_memory_node(node: DTSNode) -> bool:
-    """檢查是否為 memory 節點"""
+    """Check if is memory node"""
     device_type = node.get_property("device_type")
     return device_type and device_type.value == "memory"
 
 
 def is_cpu_node(node: DTSNode) -> bool:
-    """檢查是否為 CPU 節點"""
+    """Check if is CPU node"""
     device_type = node.get_property("device_type")
     return device_type and device_type.value == "cpu"
 
 
 def has_compatible_property(node: DTSNode, compatible_string: str) -> bool:
-    """檢查節點是否有指定的 compatible 屬性"""
+    """Check if node has specified compatible property"""
     compatible = node.get_property("compatible")
     if not compatible:
         return False
@@ -483,12 +483,12 @@ def validate_device_tree_structure(tree: DeviceTree) -> List[str]:
     if not root.has_property("compatible"):
         warnings.append("Root node missing compatible property")
     
-    # 檢查是否有 memory 節點
+    # Check if has memory node
     has_memory = any(is_memory_node(node) for node in tree.get_all_nodes())
     if not has_memory:
         warnings.append("No memory node found")
     
-    # 檢查 phandle 引用
+    # Check phandle references
     phandle_errors = tree.validate_phandle_references()
     warnings.extend(phandle_errors)
     

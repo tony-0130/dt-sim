@@ -1,6 +1,6 @@
 """
 simulators/fdtoverlay_merger.py - Core fdtoverlay merge functionality
-模擬 fdtoverlay 工具的核心邏輯，將 base DTB 和 overlay DTBO 合併
+Simulates the core logic of fdtoverlay tool, merging base DTB and overlay DTBO
 """
 
 import os
@@ -11,7 +11,7 @@ from datetime import datetime
 
 
 class DTBParser:
-    """解析已編譯的 .dtb.txt 和 .dtbo.txt 文件"""
+    """Parse compiled .dtb.txt and .dtbo.txt files"""
     
     def __init__(self):
         self.nodes = {}
@@ -23,26 +23,21 @@ class DTBParser:
         self.raw_content = ""
     
     def parse_dtb_file(self, file_path: str) -> bool:
-        """解析 DTB 文件"""
+        """Parse DTB file"""
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 self.raw_content = f.read()
             
-            # 提取源文件信息
+            # Extract source file information
             source_match = re.search(r'Source file: (.+)', self.raw_content)
             if source_match:
                 self.source_file = source_match.group(1)
             
-            # 提取統計信息
-            nodes_match = re.search(r'Total nodes: (\d+)', self.raw_content)
-            if nodes_match:
-                self.total_nodes = int(nodes_match.group(1))
-                
-            phandles_match = re.search(r'Total phandles: (\d+)', self.raw_content)
-            if phandles_match:
-                self.total_phandles = int(phandles_match.group(1))
+            # Count nodes and phandle quantities
+            self.total_nodes = self._count_nodes()
+            self.total_phandles = self._count_phandles()
             
-            # 解析 phandle 表
+            # Parse phandle table
             self._parse_phandle_table()
             
             return True
@@ -51,9 +46,23 @@ class DTBParser:
             print(f"[ERROR] Failed to parse {file_path}: {e}")
             return False
     
+    def _count_nodes(self) -> int:
+        """Count nodes in DTB file"""
+        # Count opening braces { to estimate node count
+        # This is a simple approximation
+        count = self.raw_content.count(' {')
+        return max(0, count)
+    
+    def _count_phandles(self) -> int:
+        """Count phandles in DTB file"""
+        # Count label definitions like "label_name: node_name {" or "label_name: {" 
+        label_pattern = r'(\w+):\s*(?:\w+\s*)?\{'
+        labels = re.findall(label_pattern, self.raw_content)
+        return len(labels)
+    
     def _parse_phandle_table(self):
-        """解析 phandle 映射表"""
-        # 匹配 phandle 表部分
+        """Parse phandle mapping table"""
+        # Match phandle table section
         phandle_section = re.search(
             r'/\*\s*=+ PHANDLE TABLE =+\s*\*(.*?)\*/\s*', 
             self.raw_content, re.DOTALL
@@ -64,7 +73,7 @@ class DTBParser:
             
         phandle_text = phandle_section.group(1)
         
-        # 解析每個 phandle 條目: label: 0xNN (path)
+        # Parse each phandle entry: label: 0xNN (path)
         phandle_pattern = r'\*\s+(\w+):\s+(0x[0-9a-f]+)\s+\(([^)]+)\)'
         
         for match in re.finditer(phandle_pattern, phandle_text, re.IGNORECASE):
@@ -80,7 +89,7 @@ class DTBParser:
 
 
 class FDTOverlayMerger:
-    """處理 overlay 合併邏輯"""
+    """Handle overlay merge logic"""
     
     def __init__(self):
         self.base_dtb = None
@@ -88,7 +97,7 @@ class FDTOverlayMerger:
         self.changes_made = []
     
     def load_base_dtb(self, base_file: str) -> bool:
-        """載入 base DTB 文件"""
+        """Load base DTB file"""
         parser = DTBParser()
         if parser.parse_dtb_file(base_file):
             self.base_dtb = parser
@@ -96,7 +105,7 @@ class FDTOverlayMerger:
         return False
     
     def add_overlay_dtb(self, overlay_file: str) -> bool:
-        """添加 overlay DTB 文件"""
+        """Add overlay DTB file"""
         parser = DTBParser()
         if parser.parse_dtb_file(overlay_file):
             self.overlay_dtbs.append(parser)
@@ -104,13 +113,13 @@ class FDTOverlayMerger:
         return False
     
     def merge_overlays(self, verbose: bool = False) -> bool:
-        """合併所有 overlay"""
+        """Merge all overlays"""
         try:
             for i, overlay in enumerate(self.overlay_dtbs):
                 if verbose:
                     print(f"    Merging overlay {i+1}/{len(self.overlay_dtbs)}: {os.path.basename(overlay.source_file)}")
                 
-                # 記錄變更 (簡化版本)
+                # Record changes (simplified version)
                 self.changes_made.append({
                     'type': 'overlay_applied',
                     'source': overlay.source_file,
@@ -125,7 +134,7 @@ class FDTOverlayMerger:
             return False
     
     def generate_merged_dtb(self, output_file: str, verbose: bool = False) -> bool:
-        """生成合併後的 DTB 文件"""
+        """Generate merged DTB file"""
         try:
             with open(output_file, 'w', encoding='utf-8') as f:
                 self._write_merged_dtb(f)
@@ -141,7 +150,7 @@ class FDTOverlayMerger:
             return False
     
     def _write_merged_dtb(self, f):
-        """寫入合併後的 DTB 內容"""
+        """Write merged DTB content"""
         f.write("/*\n")
         f.write(" * Generated by dt-sim fdtoverlay - merged DTB\n")
         f.write(f" * Base file: {self.base_dtb.source_file}\n")
@@ -155,7 +164,7 @@ class FDTOverlayMerger:
         f.write(" */\n\n")
         f.write("/dts-v1/;\n\n")
         
-        # 合併 phandle 表
+        # Merge phandle table
         all_phandles = self.base_dtb.phandles.copy()
         all_labels = self.base_dtb.labels.copy()
         
@@ -174,11 +183,11 @@ class FDTOverlayMerger:
             f.write(" * }\n")
             f.write(" */\n\n")
         
-        # 寫入基礎 DTB 內容 (去除頭部注釋)
+        # Write base DTB content (remove header comments)
         base_content = self._extract_dtb_content(self.base_dtb.raw_content)
         f.write(base_content)
         
-        # 添加 overlay 變更記錄
+        # Add overlay change records
         if self.changes_made:
             f.write("\n/*\n")
             f.write(" * ===== OVERLAY CHANGES APPLIED =====\n")
@@ -188,13 +197,13 @@ class FDTOverlayMerger:
             f.write(" */\n")
     
     def _extract_dtb_content(self, raw_content: str) -> str:
-        """提取 DTB 的實際內容部分（去除頭部注釋）"""
-        # 找到 /dts-v1/; 之後的內容
+        """Extract actual DTB content section (remove header comments)"""
+        # Find content after /dts-v1/;
         dts_start = raw_content.find('/dts-v1/;')
         if dts_start == -1:
             return raw_content
         
-        # 找到實際節點定義開始的位置
+        # Find the start position of actual node definitions
         content_start = raw_content.find('/ {', dts_start)
         if content_start == -1:
             return raw_content[dts_start:]
@@ -202,7 +211,7 @@ class FDTOverlayMerger:
         return raw_content[content_start:]
     
     def show_merge_summary(self):
-        """顯示合併摘要"""
+        """Show merge summary"""
         print(f"\n=== fdtoverlay Merge Summary ===")
         print(f"Base DTB: {os.path.basename(self.base_dtb.source_file)}")
         print(f"  - Nodes: {self.base_dtb.total_nodes}")
@@ -218,37 +227,37 @@ class FDTOverlayMerger:
     def merge_overlay_text(self, base_file: str, overlay_files: List[str], output_file: str, 
                           verbose: bool = False, show_changes: bool = False) -> bool:
         """
-        主要的合併接口 - 提供向後兼容性
+        Main merge interface - provides backward compatibility
         
         Args:
-            base_file: Base DTB 文件路徑
-            overlay_files: Overlay DTBO 文件路徑列表
-            output_file: 輸出文件路徑
-            verbose: 是否顯示詳細信息
-            show_changes: 是否顯示變更摘要
+            base_file: Base DTB file path
+            overlay_files: List of overlay DTBO file paths
+            output_file: Output file path
+            verbose: Whether to show detailed information
+            show_changes: Whether to show change summary
             
         Returns:
-            bool: 合併是否成功
+            bool: Whether merge was successful
         """
         try:
-            # 載入 base DTB
+            # Load base DTB
             if not self.load_base_dtb(base_file):
                 return False
             
-            # 載入所有 overlay DTBs
+            # Load all overlay DTBs
             for overlay_file in overlay_files:
                 if not self.add_overlay_dtb(overlay_file):
                     return False
             
-            # 執行合併
+            # Execute merge
             if not self.merge_overlays(verbose):
                 return False
             
-            # 顯示變更摘要
+            # Show change summary
             if show_changes:
                 self.show_merge_summary()
             
-            # 生成輸出文件
+            # Generate output file
             if not self.generate_merged_dtb(output_file, verbose):
                 return False
             

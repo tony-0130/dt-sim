@@ -1,109 +1,110 @@
 #!/usr/bin/env python3
 """
-dt-sim.py - Device Tree 模擬工具主程式
+dt-sim.py - Device Tree Simulation Tool Main Program
 """
 
 import os
 import sys
 import argparse
 
-# 添加當前目錄到模組搜索路徑
+# Add current directory to module search path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, current_dir)
 
 def setup_dtc_parser(subparser):
-    """設置 dt-sim dtc 子命令"""
+    """Setup dt-sim dtc subcommand"""
     dtc_parser = subparser.add_parser(
         'dtc',
-        help='模擬 dtc 編譯 DTS 到文本 DTB',
-        description='將 .dts 文件編譯成可讀的 .dtb.txt 文件'
+        help='Simulate dtc compilation from DTS to text DTB',
+        description='Compile .dts files into readable .dtb.txt files'
     )
     
-    dtc_parser.add_argument('input', help='輸入的 .dts 文件')
-    dtc_parser.add_argument('-o', '--output', required=True, help='輸出的 .dtb.txt 文件')
-    dtc_parser.add_argument('-v', '--verbose', action='store_true', help='顯示詳細過程')
-    dtc_parser.add_argument('--show-includes', action='store_true', help='顯示 include 處理過程')
-    dtc_parser.add_argument('--check-only', action='store_true', help='只驗證語法，不生成輸出')
+    dtc_parser.add_argument('input', help='Input .dts file')
+    dtc_parser.add_argument('-o', '--output', required=True, help='Output .dtb.txt file')
+    dtc_parser.add_argument('-v', '--verbose', action='store_true', help='Show detailed process')
+    dtc_parser.add_argument('--show-includes', action='store_true', help='Show include processing')
+    dtc_parser.add_argument('--check-only', action='store_true', help='Only validate syntax, do not generate output')
     dtc_parser.add_argument('-I', '--include', action='append', dest='include_paths', 
-                           help='添加 include 搜索路徑')
+                           help='Add include search path')
+    dtc_parser.add_argument('--platform', help='Specify platform (e.g. imx95, rk3588), auto-detect if not specified')
     
     # Validation options
     dtc_parser.add_argument('--validate', action='store_true', 
-                           help='在編譯後自動驗證 DTB 輸出')
+                           help='Automatically validate DTB output after compilation')
     dtc_parser.add_argument('--test-overlays', action='store_true',
-                           help='測試 node reference overlay 功能（適用於測試文件）')
+                           help='Test node reference overlay functionality (for test files)')
     dtc_parser.add_argument('--no-warnings', action='store_true',
-                           help='驗證時不顯示警告信息')
+                           help='Do not show warnings during validation')
     
     return dtc_parser
 
 
 def setup_fdtoverlay_parser(subparser):
-    """設置 dt-sim fdtoverlay 子命令"""
+    """Setup dt-sim fdtoverlay subcommand"""
     fdto_parser = subparser.add_parser(
         'fdtoverlay',
-        help='模擬 fdtoverlay 合併',
-        description='將 base DTB 和 overlay DTBO 合併成最終 DTB'
+        help='Simulate fdtoverlay merge',
+        description='Merge base DTB and overlay DTBO into final DTB'
     )
     
-    fdto_parser.add_argument('base', help='基礎 .dtb.txt 文件')
-    fdto_parser.add_argument('overlays', nargs='+', help='一個或多個 .dtbo.txt 文件')
-    fdto_parser.add_argument('-o', '--output', required=True, help='輸出的 final .dtb.txt 文件')
-    fdto_parser.add_argument('-v', '--verbose', action='store_true', help='顯示詳細過程')
-    fdto_parser.add_argument('--show-merge', action='store_true', help='顯示合併過程')
-    fdto_parser.add_argument('--show-changes', action='store_true', help='顯示會修改的節點')
-    fdto_parser.add_argument('--validate-only', action='store_true', help='只驗證不生成輸出')
+    fdto_parser.add_argument('base', help='Base .dtb.txt file')
+    fdto_parser.add_argument('overlays', nargs='+', help='One or more .dtbo.txt files')
+    fdto_parser.add_argument('-o', '--output', required=True, help='Output final .dtb.txt file')
+    fdto_parser.add_argument('-v', '--verbose', action='store_true', help='Show detailed process')
+    fdto_parser.add_argument('--show-merge', action='store_true', help='Show merge process')
+    fdto_parser.add_argument('--show-changes', action='store_true', help='Show nodes that will be modified')
+    fdto_parser.add_argument('--validate-only', action='store_true', help='Only validate, do not generate output')
     
     return fdto_parser
 
 def main():
-    """主函數"""
+    """Main function"""
     parser = argparse.ArgumentParser(
         prog='dt-sim',
-        description='Device Tree 模擬工具 - 模擬 dtc 和 fdtoverlay 的行為',
+        description='Device Tree Simulation Tool - Simulates dtc and fdtoverlay behavior',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog='''
-使用範例:
-  # 編譯 DTS 到文本 DTB
+Usage examples:
+  # Compile DTS to text DTB
   python dt-sim.py dtc base.dts -o base.dtb.txt --verbose
   
-  # 合併 base 和 overlay
+  # Merge base and overlay
   python dt-sim.py fdtoverlay base.dtb.txt overlay.dtbo.txt -o final.dtb.txt --show-changes
         '''
     )
     
     parser.add_argument('--version', action='version', version='dt-sim 1.0.0')
     
-    # 創建子命令
+    # Create subcommands
     subparsers = parser.add_subparsers(
-        title='可用命令',
-        description='dt-sim 支援的命令',
+        title='Available commands',
+        description='Commands supported by dt-sim',
         dest='command',
-        help='使用 "dt-sim <command> --help" 查看詳細幫助'
+        help='Use "dt-sim <command> --help" for detailed help'
     )
     
-    # 設置子命令
+    # Setup subcommands
     dtc_parser = setup_dtc_parser(subparsers)
     fdto_parser = setup_fdtoverlay_parser(subparsers)
     
-    # 解析參數
+    # Parse arguments
     args = parser.parse_args()
     
-    # 如果沒有指定命令，顯示幫助
+    # If no command specified, show help
     if not args.command:
         parser.print_help()
         return 1
     
-    # 執行對應的命令
+    # Execute corresponding command
     try:
         if args.command == 'dtc':
-            # ✅ 修復導入
+            # ✅ Fixed import
             try:
                 from commands.dtc_command import execute
                 return execute(args)
             except ImportError as e:
-                print(f"❌ 無法導入 dtc_command: {e}")
-                print("請確保 commands/dtc_command.py 文件存在")
+                print(f"[ERROR] Cannot import dtc_command: {e}")
+                print("Please ensure commands/dtc_command.py file exists")
                 return 1
                 
         elif args.command == 'fdtoverlay':
@@ -111,8 +112,8 @@ def main():
                 from commands.fdtoverlay_command import execute  
                 return execute(args)
             except ImportError as e:
-                print(f"❌ 無法導入 fdtoverlay_command: {e}")
-                print("請確保 commands/fdtoverlay_command.py 文件存在")
+                print(f"[ERROR] Cannot import fdtoverlay_command: {e}")
+                print("Please ensure commands/fdtoverlay_command.py file exists")
                 return 1
         else:
             print(f"[ERROR] Unknown command: {args.command}")

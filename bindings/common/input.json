@@ -1,0 +1,8 @@
+{
+  "description": "Common input event codes",
+  "constants": {
+    "KEY_POWER": "116",
+    "KEY_VOLUMEUP": "115",
+    "KEY_VOLUMEDOWN": "114"
+  }
+}

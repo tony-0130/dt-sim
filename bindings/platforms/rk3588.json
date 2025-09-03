@@ -1,0 +1,17 @@
+{
+  "description": "RK3588 platform-specific bindings",
+  "compatible_strings": [
+    "rockchip,rk3588",
+    "rockchip,rk3588s",
+    "rockchip,rk3588-evb"
+  ],
+  "constants": {
+    "RK3588_CLK_SCMI_CLK0": "0",
+    "RK3588_CLK_SCMI_CLK1": "1",
+    "RK3588_CLK_SCMI_CLK2": "2",
+    "RK3588_PD_GPU": "1",
+    "RK3588_PD_NPU": "2",
+    "RK3588_PD_VCODEC": "3"
+  },
+  "includes": ["common/gpio", "common/pwm", "common/interrupt", "common/clock", "common/input", "common/macros"]
+}

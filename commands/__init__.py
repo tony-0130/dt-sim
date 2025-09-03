@@ -1,11 +1,11 @@
 """
-dt-sim commands module - 命令處理
+dt-sim commands module - Command Processing
 """
 
-# 導入所有命令處理器
+# Import all command handlers
 from .dtc_command import execute as execute_dtc
 
-# 如果有其他命令，可以在這裡添加
+# If there are other commands, they can be added here
 # from .overlay_command import execute as execute_overlay
 # from .fdtoverlay_command import execute as execute_fdtoverlay
 
