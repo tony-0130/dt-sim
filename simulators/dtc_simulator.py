@@ -153,27 +153,28 @@ class DTCSimulator:
             if verbose:
                 print("  Step 2: Parsing DTS syntax...")
             
-            # 2. Parse syntax
-            from parsers.dts_parser import DTSParser, DTSLexer
-            
-            lexer = DTSLexer()
-            tokens = lexer.tokenize(processed_content, dts_file)
-            
-            print(f"  Parsing {len(tokens)} tokens from {os.path.basename(dts_file)}")
-            
-            parser = DTSParser(verbose=verbose)
-            ast_root = parser.parse(processed_content, dts_file)
+            # 2. Parse syntax using new recursive descent parser
+            from parsers.dts_parser_v2 import RecursiveDescentParser
+            from parser_compatibility_bridge import convert_new_to_legacy
             
             if verbose:
-                print("  Step 3: Building device tree structure...")
+                print(f"  Parsing {len(processed_content)} characters from {os.path.basename(dts_file)}")
             
-            # 3. Build device tree structure
-            device_tree = DeviceTree(verbose=verbose)
-            self._build_device_tree_from_ast(device_tree, ast_root)
+            # Use new high-performance recursive descent parser
+            parser = RecursiveDescentParser(verbose=verbose)
+            new_tree = parser.parse(processed_content, dts_file)
             
             if verbose:
-                print(f"    Built device tree with {len(device_tree.get_all_nodes())} nodes")
-                print(f"    Label map: {list(device_tree.label_map.keys())}")
+                print("  Step 3: Converting to legacy format...")
+            
+            # 3. Convert to legacy format for compatibility
+            device_tree = convert_new_to_legacy(new_tree)
+            
+            if device_tree.root:
+                if verbose:
+                    nodes = device_tree.get_all_nodes() if hasattr(device_tree, 'get_all_nodes') else []
+                    print(f"    Built device tree with {len(nodes)} nodes")
+                    print(f"    Label map: {list(device_tree.label_map.keys())}")
             
             if verbose:
                 print("  Step 4: Resolving phandle references...")
@@ -219,12 +220,18 @@ class DTCSimulator:
             return False, None
     
     def _build_device_tree_from_ast(self, device_tree: DeviceTree, ast_root):
-        """Build device tree structure from AST"""
+        """
+        DEPRECATED: Old AST building method - replaced by recursive descent parser
+        Build device tree structure from AST (OLD PARSER METHOD - NO LONGER USED)
+        """
+        # This method is no longer used - replaced by recursive_dts_parser + compatibility bridge
+        if ast_root is None:
+            raise Exception("Parser returned None - parsing failed")
         # Recursively process AST nodes
         self._process_node_from_ast(device_tree, None, ast_root)
     
     def _process_node_from_ast(self, device_tree: DeviceTree, parent_node: Optional[DTSNode], ast_node):
-        """Process individual node from AST node"""
+        """DEPRECATED: Process individual node from AST node (OLD PARSER METHOD - NO LONGER USED)"""
         # Create device tree node
         node = DTSNode()
         node.name = ast_node.name
