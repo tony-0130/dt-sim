@@ -25,21 +25,21 @@ dt-sim provides a complete Device Tree toolchain workflow:
 
 | Command | Purpose | Example |
 |---------|---------|---------|
-| `dtc` | Compile DTS to DTB/DTBO text | `python dt-sim.py dtc base.dts -o base.dtb.txt` |
-| `fdtoverlay` | Merge base + overlays | `python dt-sim.py fdtoverlay base.dtb.txt overlay.dtbo.txt -o final.dtb.txt` |
+| `dtc` | Compile DTS to DTB/DTBO text | `python dt-sim.py dtc base.dts` |
+| `fdtoverlay` | Merge base + overlays | `python dt-sim.py fdtoverlay base.dtb.txt overlay.dtbo.txt` |
 
 ## ⚡ Quick Start
 
 ```bash
-# 1. Compile base device tree
-python dt-sim.py dtc rk3588-board.dts -o output/base.dtb.txt --validate -v
+# 1. Compile base device tree (auto output: output/rk3588-board.dtb.txt)
+python dt-sim.py dtc rk3588-board.dts --check -v
 
-# 2. Compile overlay device trees
-python dt-sim.py dtc enable-wifi.dts -o output/wifi.dtbo.txt --validate -v
-python dt-sim.py dtc enable-display.dts -o output/display.dtbo.txt --validate -v
+# 2. Compile overlay device trees (auto output: output/*.dtb.txt)
+python dt-sim.py dtc enable-wifi.dts --check -v
+python dt-sim.py dtc enable-display.dts --check -v
 
-# 3. Merge everything into final DTB
-python dt-sim.py fdtoverlay output/base.dtb.txt output/wifi.dtbo.txt output/display.dtbo.txt -o output/final.dtb.txt --verbose --show-changes
+# 3. Merge everything into final DTB (auto output: output/rk3588-board_merged.dtb.txt)
+python dt-sim.py fdtoverlay output/rk3588-board.dtb.txt output/enable-wifi.dtb.txt output/enable-display.dtb.txt --verbose --show-changes
 ```
 
 ## 📝 Example Usage
@@ -49,23 +49,23 @@ python dt-sim.py fdtoverlay output/base.dtb.txt output/wifi.dtbo.txt output/disp
 # Real-world example with RK3588 SoC
 cd dt-sim
 
-# Compile complex SoC base (108 nodes, 72 phandles)
-python dt-sim.py dtc input/complex/rk3588-board.dts -o output/complex/rk3588-board.dtb.txt --validate -v -I input/include/
+# Compile complex SoC base (auto output: output/rk3588-board.dtb.txt)
+python dt-sim.py dtc input/complex/rk3588-board.dts --check -v -I input/include/
 
-# Compile WiFi overlay
-python dt-sim.py dtc input/overlays/enable-wifi.dts -o output/overlays/enable-wifi.dtbo.txt --validate -v -I input/include/
+# Compile WiFi overlay (auto output: output/enable-wifi.dtb.txt)
+python dt-sim.py dtc input/overlays/enable-wifi.dts --check -v -I input/include/
 
-# Compile display overlay  
-python dt-sim.py dtc input/overlays/enable-display.dts -o output/overlays/enable-display.dtbo.txt --validate -v -I input/include/
+# Compile display overlay (auto output: output/enable-display.dtb.txt)
+python dt-sim.py dtc input/overlays/enable-display.dts --check -v -I input/include/
 
-# Merge all overlays
-python dt-sim.py fdtoverlay output/complex/rk3588-board.dtb.txt output/overlays/enable-wifi.dtbo.txt output/overlays/enable-display.dtbo.txt -o output/final/complete-system.dtb.txt --verbose --show-changes
+# Merge all overlays (auto output: output/rk3588-board_merged.dtb.txt)
+python dt-sim.py fdtoverlay output/rk3588-board.dtb.txt output/enable-wifi.dtb.txt output/enable-display.dtb.txt --verbose --show-changes
 ```
 
 ### Node Reference Overlays
 ```bash
-# Test node reference functionality
-python dt-sim.py dtc test_references.dts -o output/test.dtb.txt --validate --test-overlays -v
+# Test node reference functionality (auto output: output/test_references.dtb.txt)
+python dt-sim.py dtc test_references.dts --check --test-overlays -v
 ```
 
 ## 📄 Output Format
@@ -105,6 +105,26 @@ dt-sim generates comprehensive, human-readable DTB text files:
 };
 ```
 
+## 🏗 Architecture
+
+dt-sim implements a **clean pipeline architecture** with optimal performance and maintainability:
+
+### Pipeline Flow
+```
+Preprocessing → Parsing → IR Building → Text Generation
+```
+
+1. **Preprocessing** (dtc_preprocessor) - Handle includes and macros
+2. **Parsing** (dtc_parser) - Generate AST from processed content  
+3. **IR Building** (core/intermediate) - Create intermediate representation with override merging
+4. **Generation** (generators/dtb_text_generator) - Generate DTB text from IR
+
+### Key Benefits
+- ✅ **Unified Data Pipeline** - Clean separation between phases
+- ✅ **Intermediate Representation** - Optimized for text generation with override merging
+- ✅ **Pure Pipeline Architecture** - No legacy dependencies or temporary conversions
+- ✅ **Direct IR Generation** - Text generation works directly from IR without AST conversion
+
 ## 🏗 Installation
 
 1. **Clone the repository**
@@ -125,12 +145,13 @@ python dt-sim.py fdtoverlay --help
 
 ## ⚡ Performance
 
-dt-sim includes a **high-performance recursive descent parser** that delivers exceptional speed:
+dt-sim includes a **high-performance recursive descent parser** with **clean pipeline architecture** that delivers exceptional speed:
 
 - **🚀 1.6M+ characters/second** processing speed
 - **⚡ 20,000x faster** than previous parser implementations
 - **💯 100% reliability** - no hangs or crashes on complex files
 - **🎯 Linear scaling** - handles files of any size efficiently
+- **🏗️ Clean Architecture** - Direct IR-based text generation eliminates conversion overhead
 
 **Real-world performance:**
 - Simple DTS files: **0.004 seconds** (vs 0.15s previously)
@@ -160,7 +181,7 @@ This makes dt-sim suitable for **production workflows** and **CI/CD integration*
 - ✅ **Recursive descent parser** - reliable, maintainable, and specification-compliant  
 - ✅ **Error recovery** - continues processing after non-fatal errors
 - ✅ **Standards compliant** - mimics real dtc/fdtoverlay behavior
-- ✅ **Clean architecture** - separated core logic and command interfaces
+- ✅ **Clean pipeline architecture** - Direct IR-based text generation with override merging
 
 ## 🧪 Quick Testing
 
@@ -169,16 +190,16 @@ This makes dt-sim suitable for **production workflows** and **CI/CD integration*
 cd dt-sim
 
 # 1. Compile complex base (108 nodes, 72 phandles)
-python dt-sim.py dtc input/complex/rk3588-board.dts -o output/test/base.dtb.txt --validate -v -I input/include/
+python dt-sim.py dtc input/complex/rk3588-board.dts --check -v -I input/include/
 
 # 2. Compile overlays
-python dt-sim.py dtc input/overlays/enable-wifi.dts -o output/test/wifi.dtbo.txt --validate -v -I input/include/
-python dt-sim.py dtc input/overlays/enable-display.dts -o output/test/display.dtbo.txt --validate -v -I input/include/
+python dt-sim.py dtc input/overlays/enable-wifi.dts --check -v -I input/include/
+python dt-sim.py dtc input/overlays/enable-display.dts --check -v -I input/include/
 
 # 3. Merge everything
-python dt-sim.py fdtoverlay output/test/base.dtb.txt output/test/wifi.dtbo.txt output/test/display.dtbo.txt -o output/test/final.dtb.txt --verbose --show-changes
+python dt-sim.py fdtoverlay output/rk3588-board.dtb.txt output/enable-wifi.dtb.txt output/enable-display.dtb.txt --verbose --show-changes
 
-# Expected: ~60KB final DTB with comprehensive metadata
+# Expected: ~60KB final DTB with comprehensive metadata in output/rk3588-board_merged.dtb.txt
 ```
 
 ## 📚 Documentation

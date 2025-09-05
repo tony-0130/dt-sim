@@ -1,7 +1,7 @@
 """
-DTC Simulation Module
+DTC Simulation Module - Clean Architecture
 """
 
-from .dtc_simulator import DTCSimulator, Preprocessor
+from .dtc_simulator import DTCSimulator
 
-__all__ = ['DTCSimulator', 'Preprocessor']
+__all__ = ['DTCSimulator']

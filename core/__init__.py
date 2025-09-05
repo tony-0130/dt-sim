@@ -1,20 +1,31 @@
 """
-core/__init__.py - dt-sim Core Data Structures
+core/__init__.py - dt-sim Core Data Structures - Clean Architecture
 
-This module defines the core data structures used in dt-sim:
-- DTSProperty: Device tree property
-- DTSNode: Device tree node  
-- DeviceTree: Main device tree structure
+Clean architecture exports:
+- AST structures for parsing (from ast.py)
+- Intermediate representation (from intermediate.py)
 
-V2 Enhanced structures (for new parser):
-- NormalNode, OverrideNode: Enhanced node types
-- Property, Value: Enhanced property types  
-- DeviceTree: Enhanced device tree structure
+Legacy V1 structures moved to legacy/ folder.
 """
 
-from .core import DTSProperty, DTSNode, DeviceTree
+from .ast import (
+    DeviceTree, NormalNode, OverrideNode, 
+    Property, Value, ValueType, Reference, ReferenceType,
+    Token, TokenType, NodeStmt
+)
 
-# V2 enhanced structures available but not exported by default
-# Import from core.core_v2 if needed
+from .intermediate import (
+    IntermediateRepresentation, IRNode, IRProperty, IRBuilder,
+    validate_ir, optimize_ir_for_generation
+)
 
-__all__ = ['DeviceTree', 'DTSNode', 'DTSProperty']
+__all__ = [
+    # AST structures
+    'DeviceTree', 'NormalNode', 'OverrideNode', 
+    'Property', 'Value', 'ValueType', 'Reference', 'ReferenceType',
+    'Token', 'TokenType', 'NodeStmt',
+    
+    # Intermediate representation
+    'IntermediateRepresentation', 'IRNode', 'IRProperty', 'IRBuilder',
+    'validate_ir', 'optimize_ir_for_generation'
+]

@@ -1,8 +1,7 @@
 """
-dt-sim utils module - Utility Functions
+dt-sim utils module - Utility Functions - Clean Architecture
 """
 
 from .error_reporter import ErrorReporter
-from .text_generator import TextGenerator
 
-__all__ = ['ErrorReporter', 'TextGenerator']
+__all__ = ['ErrorReporter']

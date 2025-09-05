@@ -109,7 +109,7 @@ PERFORMANCE CHARACTERISTICS
 
 import re
 from typing import List, Optional, Tuple, Iterator
-from core.core_v2 import (
+from core.ast import (
     Token, TokenType, NodeStmt, NormalNode, OverrideNode, 
     Property, Value, ValueType, Reference, ReferenceType, DeviceTree
 )
@@ -128,7 +128,7 @@ class DTSLexer:
     TOKEN_PATTERNS = [
         (TokenType.COMMENT, r'//[^\n]*|/\*.*?\*/'),
         (TokenType.STRING, r'"(?:[^"\\]|\\.)*"'),
-        (TokenType.NUMBER, r'0x[0-9a-fA-F]+|[0-9]+'),
+        (TokenType.NUMBER, r'0x[0-9a-fA-F]+|[0-9]+'),  # Fixed: removed bare hex - only prefixed hex and decimal
         (TokenType.IDENT, r'[a-zA-Z_][a-zA-Z0-9_-]*(?:[,#-][a-zA-Z0-9_-]*)*'),
         (TokenType.PATH, r'\{/[^}]*\}'),  # For &{/path} syntax
         (TokenType.AMP, r'&'),
@@ -211,43 +211,118 @@ class RecursiveDescentParser:
         
         if self.verbose:
             print(f"Generated {len(self.tokens)} tokens")
+            if len(self.tokens) < 50:  # Only show tokens for small files
+                for i, token in enumerate(self.tokens):
+                    print(f"  Token {i}: {token}")
         
         # Parse device tree
         return self._parse_device_tree()
     
+    def generate_dtb_text(self, tree: DeviceTree, output_file: str, source_file: str = "") -> None:
+        """Generate DTB text format using separate generator"""
+        from generators.dtb_text_generator import DTBTextGenerator
+        
+        generator = DTBTextGenerator(verbose=self.verbose)
+        generator.generate(tree, output_file, source_file)
+    
     # ===== Core Parsing Functions =====
     
     def _parse_device_tree(self) -> DeviceTree:
-        """device_tree ::= { node_stmt }"""
+        """device_tree ::= ['/dts-v1/;'] root_node"""
         tree = DeviceTree()
         
-        # Create root node
-        root_children = []
+        # Skip /dts-v1/; declaration if present
+        if (self._peek() == TokenType.SLASH and 
+            self.pos + 1 < len(self.tokens) and 
+            self.tokens[self.pos + 1].type == TokenType.IDENT and
+            self.tokens[self.pos + 1].value == 'dts-v1'):
+            if self.verbose:
+                print("DEBUG: Skipping /dts-v1/; declaration")
+            self._skip_dts_version()
         
+        # Find and parse the root node "/ { ... };"
+        root_found = False
         while not self._at_eof():
-            try:
-                node = self._parse_node_stmt()
-                root_children.append(node)
-            except ParseError as e:
+            if (self._peek() == TokenType.SLASH and 
+                self.pos + 1 < len(self.tokens) and
+                self.tokens[self.pos + 1].type == TokenType.LBRACE):
                 if self.verbose:
-                    print(f"Warning: Skipping invalid node - {e}")
-                self._skip_to_next_node()
+                    print("DEBUG: Found root node")
+                root = self._parse_root_node()
+                tree.root = root
+                tree.add_node(root)
+                root_found = True
+                break
+            else:
+                # Skip non-root tokens until we find root
+                if self.verbose:
+                    print(f"DEBUG: Skipping token: {self._current()}")
+                self.pos += 1
         
-        # Create implicit root node if we have children
-        if root_children:
-            root = NormalNode(
-                name="/", 
-                label=None,
-                unit_addr=None,
-                children=root_children
-            )
-            tree.root = root
-            tree.add_node(root)
+        # Continue parsing override nodes and other top-level constructs
+        if root_found:
+            while not self._at_eof():
+                try:
+                    if self._peek() == TokenType.AMP:
+                        # Parse override node
+                        if self.verbose:
+                            print("DEBUG: Found override node")
+                        override = self._parse_override_node_stmt()
+                        # Add override node to the tree for later merging
+                        if hasattr(tree, 'override_nodes'):
+                            tree.override_nodes.append(override)
+                        else:
+                            tree.override_nodes = [override]
+                    elif self._peek() in [TokenType.IDENT, TokenType.SLASH]:
+                        # Parse additional top-level nodes
+                        if self.verbose:
+                            print("DEBUG: Found additional node")
+                        node = self._parse_node_stmt()
+                        tree.add_node(node)
+                    else:
+                        # Skip unknown tokens
+                        if self.verbose:
+                            print(f"DEBUG: Skipping unknown token: {self._current()}")
+                        self.pos += 1
+                except ParseError as e:
+                    if self.verbose:
+                        print(f"DEBUG: Parse error, skipping: {e}")
+                    self.pos += 1
         
         return tree
     
+    def _skip_dts_version(self):
+        """Skip /dts-v1/; declaration"""
+        # Skip tokens until we find a semicolon
+        while not self._at_eof() and self._peek() != TokenType.SEMI:
+            self.pos += 1
+        if self._peek() == TokenType.SEMI:
+            self.pos += 1  # Skip the semicolon
+    
+    def _parse_root_node(self) -> NormalNode:
+        """Parse the root node: / { ... };"""
+        self._expect(TokenType.SLASH)  # consume '/'
+        self._expect(TokenType.LBRACE)  # consume '{'
+        
+        properties, children = self._parse_node_body()
+        
+        self._expect(TokenType.RBRACE)  # consume '}'
+        self._expect(TokenType.SEMI)    # consume ';'
+        
+        return NormalNode(
+            name="/",
+            label=None,
+            unit_addr=None,
+            properties=properties,
+            children=children,
+            source_file=self._current().file,
+            line_number=self._current().line
+        )
+    
     def _parse_node_stmt(self) -> NodeStmt:
         """node_stmt ::= override_node_stmt | normal_node_stmt"""
+        if self.verbose:
+            print(f"DEBUG: _parse_node_stmt called, current token: {self._current()}")
         if self._peek() == TokenType.AMP:
             return self._parse_override_node_stmt()
         else:
@@ -256,9 +331,16 @@ class RecursiveDescentParser:
     def _parse_override_node_stmt(self) -> OverrideNode:
         """override_node_stmt ::= REFERENCE "{" node_body "}" \";\" """
         target = self._parse_reference()
+        
+        if self.verbose:
+            print(f"DEBUG: Parsing override node for target: {target}")
+        
         self._expect(TokenType.LBRACE)
         
         properties, children = self._parse_node_body()
+        
+        if self.verbose:
+            print(f"DEBUG: Override node '{target}' has {len(properties)} properties and {len(children)} children")
         
         self._expect(TokenType.RBRACE)
         self._expect(TokenType.SEMI)
@@ -294,13 +376,57 @@ class RecursiveDescentParser:
             unit_addr = None
             if self._peek() == TokenType.AT:
                 self._consume(TokenType.AT)
-                unit_addr = self._expect(TokenType.NUMBER).value
+                # Unit addresses can be:
+                # - Simple numbers: @123
+                # - Hex with continuation: @204c0000 (tokenized as NUMBER + IDENT)
+                # - Comma-separated: @10,0 (tokenized as NUMBER + COMMA + NUMBER)
+                # - Pure hex: @c0000
+                
+                unit_addr_parts = []
+                
+                # Parse first part
+                if self._peek() == TokenType.NUMBER:
+                    first_token = self._expect(TokenType.NUMBER)
+                    unit_addr_parts.append(first_token.value)
+                    
+                    # Check for hex continuation (split hex like 204c0000)
+                    if self._peek() == TokenType.IDENT:
+                        hex_part = self._expect(TokenType.IDENT).value
+                        unit_addr_parts[0] = unit_addr_parts[0] + hex_part
+                    
+                    # Check for comma-separated parts like @10,0
+                    elif self._peek() == TokenType.COMMA:
+                        while self._peek() == TokenType.COMMA:
+                            self._consume(TokenType.COMMA)
+                            if self._peek() == TokenType.NUMBER:
+                                next_part = self._expect(TokenType.NUMBER).value
+                                unit_addr_parts.append(next_part)
+                            else:
+                                raise ParseError(f"Expected number after comma in unit address, got {self._peek().name}", self._current())
+                        
+                elif self._peek() == TokenType.IDENT:
+                    # Handle pure hex addresses like "c0000"
+                    unit_addr_token = self._expect(TokenType.IDENT)
+                    unit_addr_parts.append(unit_addr_token.value)
+                else:
+                    raise ParseError(f"Expected unit address (number or hex), got {self._peek().name}", self._current())
+                
+                # Combine parts with comma
+                unit_addr = ','.join(unit_addr_parts)
+                
+                # DEBUG: Print what we parsed
+                if self.verbose:
+                    print(f"DEBUG: Parsed node - label='{label}', name='{name}', unit_addr='{unit_addr}'")
         
         # Parse node body
         self._expect(TokenType.LBRACE)
         properties, children = self._parse_node_body()
         self._expect(TokenType.RBRACE)
         self._expect(TokenType.SEMI)
+        
+        # DEBUG: Print final node creation
+        if self.verbose:
+            print(f"DEBUG: Creating node - name='{name}', label='{label}', unit_addr='{unit_addr}'")
         
         return NormalNode(
             name=name,
@@ -318,10 +444,25 @@ class RecursiveDescentParser:
         children = []
         
         while self._peek() != TokenType.RBRACE and not self._at_eof():
-            if self._is_node_header():
-                children.append(self._parse_node_stmt())
-            else:
-                properties.append(self._parse_property_stmt())
+            if self.verbose:
+                print(f"DEBUG: _parse_node_body - current token: {self._current()}")
+            
+            # Use lookahead to determine if this is a node or property
+            try:
+                if self._is_node_header():
+                    if self.verbose:
+                        print("DEBUG: Identified as node")
+                    child = self._parse_node_stmt()
+                    children.append(child)
+                else:
+                    if self.verbose:
+                        print("DEBUG: Identified as property")
+                    prop = self._parse_property_stmt()
+                    properties.append(prop)
+            except ParseError as e:
+                if self.verbose:
+                    print(f"DEBUG: Parse error in node body: {e}")
+                self.pos += 1  # Skip problematic token
                 
         return properties, children
     
@@ -358,7 +499,7 @@ class RecursiveDescentParser:
         return values
     
     def _parse_prop_value(self) -> Value:
-        """prop_value ::= STRING | NUMBER | BYTE_STREAM | CELL_LIST"""
+        """prop_value ::= STRING | NUMBER | BYTE_STREAM | CELL_LIST | REFERENCE"""
         token_type = self._peek()
         
         if token_type == TokenType.STRING:
@@ -382,6 +523,11 @@ class RecursiveDescentParser:
         elif token_type == TokenType.LT:
             return self._parse_cell_list()
             
+        elif token_type == TokenType.AMP:
+            # Handle standalone reference like &lpi2c2
+            ref = self._parse_reference()
+            return Value(ValueType.REFERENCE, ref)
+            
         else:
             raise ParseError(f"Expected property value, got {token_type.name}", self._current())
     
@@ -403,7 +549,7 @@ class RecursiveDescentParser:
         return Value(ValueType.BYTE_STREAM, bytes_data)
     
     def _parse_cell_list(self) -> Value:
-        """CELL_LIST ::= \"<\" { NUMBER | REFERENCE } \">\" """
+        """CELL_LIST ::= \"<\" { NUMBER | REFERENCE | IDENT } \">\" """
         self._expect(TokenType.LT)
         
         cells = []
@@ -417,8 +563,12 @@ class RecursiveDescentParser:
             elif self._peek() == TokenType.AMP:
                 ref = self._parse_reference()
                 cells.append(ref)
+            elif self._peek() == TokenType.IDENT:
+                # Handle identifiers like IMX95_PAD_CCM_CLKO2__GPIO3_IO_BIT27
+                ident_token = self._consume(TokenType.IDENT)
+                cells.append(ident_token.value)
             else:
-                raise ParseError("Expected number or reference in cell list", self._current())
+                raise ParseError(f"Expected number, reference, or identifier in cell list, got {self._peek().name}", self._current())
         
         self._expect(TokenType.GT)
         return Value(ValueType.CELL_LIST, cells)

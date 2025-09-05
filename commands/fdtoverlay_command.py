@@ -5,6 +5,7 @@ Simulates fdtoverlay tool, merging base DTB and overlay DTBO into final DTB
 
 import os
 import sys
+from pathlib import Path
 
 # Import core merge logic
 from simulators.fdtoverlay_merger import FDTOverlayMerger
@@ -12,8 +13,17 @@ from simulators.fdtoverlay_merger import FDTOverlayMerger
 def execute(args) -> int:
     """Execute fdtoverlay command"""
     try:
+        # ✅ Handle output path - auto-generate if not specified
+        if args.output:
+            output_file = args.output
+        else:
+            # Auto-generate output filename based on base file
+            base_path = Path(args.base)
+            auto_output = base_path.stem.replace('.dtb', '') + "_merged.dtb.txt"
+            output_file = str(Path("output") / auto_output)
+        
         if args.verbose:
-            print(f"dt-sim fdtoverlay: merging {os.path.basename(args.base)} + {len(args.overlays)} overlays -> {os.path.basename(args.output)}")
+            print(f"dt-sim fdtoverlay: merging {os.path.basename(args.base)} + {len(args.overlays)} overlays -> {os.path.basename(output_file)}")
         
         # Check input files
         if not os.path.exists(args.base):
@@ -26,7 +36,7 @@ def execute(args) -> int:
                 return 1
         
         # Create output directory
-        output_dir = os.path.dirname(args.output)
+        output_dir = os.path.dirname(output_file)
         if output_dir and not os.path.exists(output_dir):
             os.makedirs(output_dir)
         
@@ -62,13 +72,13 @@ def execute(args) -> int:
         if args.verbose:
             print("  Step 4: Generating merged DTB...")
         
-        if not merger.generate_merged_dtb(args.output, args.verbose):
+        if not merger.generate_merged_dtb(output_file, args.verbose):
             return 1
         
         if args.show_merge:
             merger.show_merge_summary()
         
-        print(f"[OK] Successfully merged DTB: {os.path.basename(args.output)}")
+        print(f"[OK] Successfully merged DTB: {os.path.basename(output_file)}")
         return 0
         
     except KeyboardInterrupt:

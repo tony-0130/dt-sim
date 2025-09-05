@@ -20,7 +20,7 @@ def setup_dtc_parser(subparser):
     )
     
     dtc_parser.add_argument('input', help='Input .dts file')
-    dtc_parser.add_argument('-o', '--output', required=True, help='Output .dtb.txt file')
+    dtc_parser.add_argument('-o', '--output', help='Output .dtb.txt file (default: input_file.dtb.txt)')
     dtc_parser.add_argument('-v', '--verbose', action='store_true', help='Show detailed process')
     dtc_parser.add_argument('--show-includes', action='store_true', help='Show include processing')
     dtc_parser.add_argument('--check-only', action='store_true', help='Only validate syntax, do not generate output')
@@ -29,8 +29,8 @@ def setup_dtc_parser(subparser):
     dtc_parser.add_argument('--platform', help='Specify platform (e.g. imx95, rk3588), auto-detect if not specified')
     
     # Validation options
-    dtc_parser.add_argument('--validate', action='store_true', 
-                           help='Automatically validate DTB output after compilation')
+    dtc_parser.add_argument('--validate', '--check', action='store_true', 
+                           help='Validate DTB output after compilation (alias: --check)')
     dtc_parser.add_argument('--test-overlays', action='store_true',
                            help='Test node reference overlay functionality (for test files)')
     dtc_parser.add_argument('--no-warnings', action='store_true',
@@ -49,7 +49,7 @@ def setup_fdtoverlay_parser(subparser):
     
     fdto_parser.add_argument('base', help='Base .dtb.txt file')
     fdto_parser.add_argument('overlays', nargs='+', help='One or more .dtbo.txt files')
-    fdto_parser.add_argument('-o', '--output', required=True, help='Output final .dtb.txt file')
+    fdto_parser.add_argument('-o', '--output', help='Output final .dtb.txt file (default: base_merged.dtb.txt)')
     fdto_parser.add_argument('-v', '--verbose', action='store_true', help='Show detailed process')
     fdto_parser.add_argument('--show-merge', action='store_true', help='Show merge process')
     fdto_parser.add_argument('--show-changes', action='store_true', help='Show nodes that will be modified')
@@ -65,11 +65,14 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog='''
 Usage examples:
-  # Compile DTS to text DTB
-  python dt-sim.py dtc base.dts -o base.dtb.txt --verbose
+  # Simple compilation (auto output)
+  python dt-sim.py dtc base.dts
   
-  # Merge base and overlay
-  python dt-sim.py fdtoverlay base.dtb.txt overlay.dtbo.txt -o final.dtb.txt --show-changes
+  # Compile with validation
+  python dt-sim.py dtc base.dts --validate -v
+  
+  # Merge base and overlay (auto output)  
+  python dt-sim.py fdtoverlay base.dtb.txt overlay.dtbo.txt --show-changes
         '''
     )
     

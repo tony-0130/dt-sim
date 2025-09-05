@@ -1,9 +1,8 @@
 """
-dt-sim parsers module - DTS Parser
+dt-sim parsers module - Clean Architecture
 """
 
-from .dts_parser import DTSParser
-from .dts_parser_v2 import RecursiveDescentParser
-from .preprocessor import Preprocessor
+from .dtc_parser import RecursiveDescentParser
+from .dtc_preprocessor import PreprocessorV2
 
-__all__ = ['DTSParser', 'RecursiveDescentParser', 'Preprocessor']
+__all__ = ['RecursiveDescentParser', 'PreprocessorV2']

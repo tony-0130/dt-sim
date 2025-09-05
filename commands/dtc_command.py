@@ -1,6 +1,10 @@
 """
-commands/dtc_command.py - dt-sim dtc command implementation
-Supports automatic creation of output directory
+commands/dtc_command.py - Clean thin wrapper for dt-sim dtc command
+
+Implements the user's vision for thin command wrapper that delegates
+to the clean pipeline dtc_simulator for all actual processing.
+
+Clean architecture: dt-sim → dtc_command → dtc_simulator → pipeline components
 """
 
 import os
@@ -79,26 +83,28 @@ def run_validation(dtb_file, input_file, verbose=False, test_overlays=False, sho
         return 1
 
 def execute(args):
-    """Execute dt-sim dtc command"""
+    """Execute dt-sim dtc command - Thin wrapper around clean pipeline simulator"""
     try:
         from simulators.dtc_simulator import DTCSimulator
-        from utils.error_reporter import ErrorReporter
         
-        # ✅ Handle output path - ensure it's placed in output directory
-        output_file = prepare_output_path(args.output)
-        
-        if args.verbose:
-            print(f"dt-sim dtc: compiling {args.input} → {output_file}")
+        # ✅ Handle output path - auto-generate if not specified
+        if args.output:
+            output_file = prepare_output_path(args.output)
+        else:
+            # Auto-generate output filename
+            input_path = Path(args.input)
+            auto_output = input_path.stem + ".dtb.txt"
+            output_file = prepare_output_path(auto_output)
         
         # Check input file
         if not os.path.exists(args.input):
-            ErrorReporter.file_not_found(args.input)
+            print(f"[ERROR] Input file not found: {args.input}")
             return 1
             
-        # Create simulator
-        simulator = DTCSimulator()
+        # Create clean pipeline simulator
+        simulator = DTCSimulator(verbose=args.verbose)
         
-        # Add include paths
+        # Add include paths from args
         if hasattr(args, 'include_paths') and args.include_paths:
             for path in args.include_paths:
                 simulator.add_include_path(path)
@@ -107,53 +113,37 @@ def execute(args):
         input_dir = os.path.dirname(os.path.abspath(args.input))
         simulator.add_include_path(input_dir)
         
-        if hasattr(args, 'check_only') and args.check_only:
-            # Only validate syntax
-            result = simulator.validate_syntax(args.input, verbose=args.verbose)
-            if result:
-                print("✅ Syntax validation passed")
-                return 0
-            else:
-                print("❌ Syntax validation failed")
-                return 1
-        else:
-            # Full compilation
-            success, device_tree = simulator.compile_to_text_dtb(
+        # Run clean pipeline compilation
+        success, intermediate_rep = simulator.compile_dts(
+            args.input,
+            output_file,
+            platform=getattr(args, 'platform', None),
+            validate=getattr(args, 'validate', False),
+            no_warnings=getattr(args, 'no_warnings', False)
+        )
+        
+        if not success:
+            return 1
+        
+        # Automatic validation if requested (additional validation beyond pipeline)
+        if hasattr(args, 'validate') and args.validate and hasattr(args, 'test_overlays'):
+            validation_result = run_validation(
+                output_file, 
                 args.input,
-                output_file,  # Use processed output path
                 verbose=args.verbose,
-                platform=getattr(args, 'platform', None)
+                test_overlays=getattr(args, 'test_overlays', False),
+                show_warnings=not getattr(args, 'no_warnings', False)
             )
             
-            if success and device_tree:
-                if args.verbose:
-                    print(f"Compilation completed successfully!")
-                    print(f"   Node count: {len(device_tree.get_all_nodes())}")
-                    print(f"   Phandle count: {len(device_tree.phandle_map)}")
-                    print(f"   Output file: {output_file}")
-                else:
-                    print(f"Compilation completed: {output_file}")
-            else:
-                raise Exception("Compilation failed")
-            
-            # Automatic validation if requested
-            if hasattr(args, 'validate') and args.validate:
-                validation_result = run_validation(
-                    output_file, 
-                    args.input,
-                    verbose=args.verbose,
-                    test_overlays=getattr(args, 'test_overlays', False),
-                    show_warnings=not getattr(args, 'no_warnings', False)
-                )
-                
-                if validation_result != 0:
-                    print("Note: Compilation succeeded but validation found issues")
-                    return validation_result
-            
-            return 0
+            if validation_result != 0:
+                print("Note: Compilation succeeded but additional validation found issues")
+                return validation_result
+        
+        return 0
             
     except Exception as e:
-        ErrorReporter.compilation_failed(args.input, str(e))
+        print(f"[ERROR] Compilation failed: {args.input}")
+        print(f"   Error: {str(e)}")
         if hasattr(args, 'verbose') and args.verbose:
             import traceback
             traceback.print_exc()
@@ -189,3 +179,4 @@ def prepare_output_path(output_arg: str) -> str:
     final_path.parent.mkdir(parents=True, exist_ok=True)
     
     return str(final_path)
+

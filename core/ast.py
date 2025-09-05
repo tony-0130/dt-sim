@@ -1,22 +1,33 @@
 """
-Enhanced Core Design for Recursive Descent Parser
-Based on device_tree_parser_spec.md
+Core AST Data Structures for Device Tree Pipeline
+
+Contains essential data structure classes used throughout the clean pipeline:
+- Value/ValueType: Property values with type information
+- Reference/ReferenceType: Node references (&label, &{/path})
+- Property: Device tree properties
+- Token/TokenType: Lexical tokens for parsing
+- DeviceTree/Node classes: AST structure for parsing phase
+
+Only contains classes actively used by the pipeline components.
 """
 
 from typing import Dict, List, Optional, Union, Any
 from dataclasses import dataclass, field
 from enum import Enum
 
-# ===== Enhanced AST Structure =====
+# ===== Value System =====
 
 class ValueType(Enum):
+    """Property value types"""
     STRING = "string"
     NUMBER = "number"
     BYTE_STREAM = "byte_stream"  
     CELL_LIST = "cell_list"
     BOOLEAN = "boolean"
+    REFERENCE = "reference"
 
 class ReferenceType(Enum):
+    """Reference types"""
     LABEL = "label"      # &label_name
     PATH = "path"        # &{/path/to/node}
 
@@ -68,7 +79,10 @@ class Property:
                 refs.extend([item for item in value.data if isinstance(item, Reference)])
         return refs
 
+# ===== Node Structure =====
+
 class NodeType(Enum):
+    """Node types"""
     NORMAL = "normal"      # Regular node definition
     OVERRIDE = "override"  # Override existing node (&label { ... })
 
@@ -104,10 +118,10 @@ class OverrideNode:
 # Union type for all node statements
 NodeStmt = Union[NormalNode, OverrideNode]
 
-# ===== Enhanced Device Tree Structure =====
+# ===== Device Tree Structure =====
 
 class DeviceTree:
-    """Enhanced device tree structure optimized for recursive parsing"""
+    """Device tree structure for parsing phase"""
     
     def __init__(self):
         self.root: Optional[NodeStmt] = None
@@ -172,9 +186,10 @@ class DeviceTree:
             
         return errors
 
-# ===== Token Definitions for New Parser =====
+# ===== Token System =====
 
 class TokenType(Enum):
+    """Token types for lexical analysis"""
     # Identifiers and literals
     IDENT = "IDENT"
     STRING = "STRING" 
@@ -203,7 +218,7 @@ class TokenType(Enum):
 
 @dataclass
 class Token:
-    """Enhanced token with position information"""
+    """Token with position information"""
     type: TokenType
     value: str
     line: int
